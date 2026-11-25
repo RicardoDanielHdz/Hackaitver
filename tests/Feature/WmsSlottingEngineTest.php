@@ -643,4 +643,58 @@ class WmsSlottingEngineTest extends TestCase
         $violations = WarehouseSlottingTopologyGuard::recentViolations();
         $this->assertGreaterThanOrEqual(7, count($violations));
     }
+
+    public function test_emergency_incomplete_torton_dispatch_notifies_gerente_and_generates_pdf_manifest_on_approval(): void
+    {
+        $this->seed(WmsDemoSeeder::class);
+
+        $jefeEmbarque = User::query()->where('email', 'embarque@cedis.com')->firstOrFail();
+        $gerente = User::query()->where('email', 'gerente@cedis.com')->firstOrFail();
+
+        // 1. SUC-04 Iztapalapa Central tiene 5 tarimas (<90% capacidad). Embarques fuerza solicitud de emergencia:
+        $storeResp = $this->actingAs($jefeEmbarque)->postJson(route('embarques.emergencies.store'), [
+            'branch_code' => 'SUC-04',
+            'dock_code' => 'E2',
+            'unit_plate' => '88-EM-4Z',
+            'driver_name' => 'Luis Fernando Morales',
+            'emergency_reason' => 'Desabasto crítico escolar en sucursal Iztapalapa Central.',
+        ]);
+
+        $storeResp->assertCreated();
+        $emergencyId = (int) $storeResp->json('request.id');
+        $emergencyFolio = (string) $storeResp->json('request.folio');
+        $this->assertSame('pending', $storeResp->json('request.status'));
+        $this->assertLessThan(90.0, (float) $storeResp->json('request.weight_pct'));
+
+        // 2. El Jefe de Embarque NO puede auto-aprobar la salida de emergencia (403 Forbidden)
+        $this->actingAs($jefeEmbarque)
+            ->postJson(route('gerente.emergencies.approve', $emergencyId))
+            ->assertForbidden();
+
+        // 3. El Gerente ve la notificación de urgencia en /gerente y acepta la salida del Tortón incompleto
+        $this->actingAs($gerente)
+            ->get(route('dashboard.gerente'))
+            ->assertOk()
+            ->assertSee($emergencyFolio)
+            ->assertSee('Desabasto crítico escolar en sucursal Iztapalapa Central.');
+
+        $approveResp = $this->actingAs($gerente)->postJson(route('gerente.emergencies.approve', $emergencyId), [
+            'manager_notes' => 'Autorizado por urgencia comercial en tienda.',
+        ]);
+
+        $approveResp->assertOk();
+        $approveResp->assertJsonPath('request.status', 'approved');
+        $manifestUrl = (string) $approveResp->json('request.manifest_url');
+        $this->assertNotEmpty($manifestUrl);
+
+        // 4. El Jefe de Embarque recibe de inmediato el PDF / Etiqueta Maestra oficial de salida
+        $pdfResp = $this->actingAs($jefeEmbarque)->get($manifestUrl);
+        $pdfResp->assertOk()
+            ->assertSee('ETIQUETA MAESTRA DE EMBARQUE FINAL TORTÓN')
+            ->assertSee('EXCEPCIÓN GERENCIAL')
+            ->assertSee($emergencyFolio)
+            ->assertSee('SUC-04')
+            ->assertSee('88-EM-4Z')
+            ->assertSee('data:image/svg+xml;base64,');
+    }
 }

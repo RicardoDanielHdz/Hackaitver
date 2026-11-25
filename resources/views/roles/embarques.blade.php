@@ -10,17 +10,27 @@
 
 <div x-data="{
         branches: @js($branches),
+        csrfToken: @js(csrf_token()),
+        emergenciesListUrl: @js(route('embarques.emergencies.index', [], false)),
+        emergenciesStoreUrl: @js(route('embarques.emergencies.store', [], false)),
+        emergencyRequests: @js($emergencyRequests ?? []),
+        emergencyReason: '',
+        sendingEmergency: false,
+        emergencyBanner: '',
+        emergencyError: '',
         selectedIndex: 0,
         branchSearch: '',
         statusFilter: 'TODAS',
         sortCriterion: 'FECHA_SLA',
-        slaExceptionApproved: false,
         outboundDock: 'E1',
         unitPlate: '55-XA-2F',
         driverName: 'Roberto Ruiz Hernández',
         dispatching: false,
         showManifestModal: false,
         activeManifest: null,
+        init() {
+            setInterval(() => this.pollEmergencies(), 5000);
+        },
         dispatchedList: [
             {
                 folio: 'EMB-2026-041',
@@ -78,7 +88,57 @@
             return this.branches[this.selectedIndex];
         },
         get canDispatch() {
-            return (this.current.weight_pct >= 90 && this.current.volume_pct >= 90) || (this.current.sla_priority <= 2 && this.slaExceptionApproved);
+            return (this.current.weight_pct >= 90 && this.current.volume_pct >= 90);
+        },
+        get currentEmergencyRequest() {
+            return this.emergencyRequests.find(r => r.branch_code === this.current.code && (r.status === 'pending' || r.status === 'approved')) || null;
+        },
+        async pollEmergencies() {
+            try {
+                const res = await fetch(this.emergenciesListUrl, { headers: { 'Accept': 'application/json' } });
+                if (res.ok) {
+                    const data = await res.json();
+                    this.emergencyRequests = data.requests || [];
+                }
+            } catch (_) {}
+        },
+        async requestEmergencyDispatch() {
+            this.sendingEmergency = true;
+            this.emergencyError = '';
+            this.emergencyBanner = '';
+            try {
+                const res = await fetch(this.emergenciesStoreUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': this.csrfToken
+                    },
+                    body: JSON.stringify({
+                        branch_code: this.current.code,
+                        dock_code: this.outboundDock,
+                        unit_plate: this.unitPlate,
+                        driver_name: this.driverName,
+                        emergency_reason: this.emergencyReason.trim() || ('Urgencia operativa de abasto en ' + this.current.code + ' ' + this.current.name),
+                        estimated_pallets: Math.min(12, Math.max(1, Number(this.current.pallets || 6))),
+                        estimated_weight_kg: Number(this.current.weight_kg || 6500),
+                        weight_pct: Number(this.current.weight_pct || 54),
+                        estimated_volume_m3: Number(this.current.volume_m3 || 15.5),
+                        volume_pct: Number(this.current.volume_pct || 54)
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    throw new Error(data.message || 'Verifica el motivo de la emergencia (mín. 5 caracteres).');
+                }
+                this.emergencyRequests = data.requests || [];
+                this.emergencyBanner = data.message;
+                this.emergencyReason = '';
+            } catch (err) {
+                this.emergencyError = err.message;
+            } finally {
+                this.sendingEmergency = false;
+            }
         },
         get filteredBranches() {
             const q = this.branchSearch.trim().toLowerCase();
@@ -252,7 +312,7 @@
                     </thead>
                     <tbody class="divide-y divide-zinc-200">
                         <template x-for="b in filteredBranches" :key="b.code">
-                            <tr @click="selectedIndex = b._idx; slaExceptionApproved = false"
+                            <tr @click="selectedIndex = b._idx"
                                 class="cursor-pointer transition"
                                 :class="selectedIndex === b._idx ? 'bg-orange-50 font-bold' : 'even:bg-zinc-50/80 hover:bg-zinc-100'">
                                 <td class="py-2.5 px-3 font-sans">
@@ -374,19 +434,66 @@
                     <span class="text-zinc-500" x-text="'Antigüedad FIFO en rack: ' + current.days_in_rack + ' día(s)'"></span>
                 </div>
 
-                <div x-show="!current.ready_for_torton" x-cloak class="p-3 rounded-md bg-zinc-100 border border-zinc-300 text-zinc-800 text-xs font-mono space-y-2">
-                    <div>
-                        <strong>CANDADO NORMATIVO ACTIVO (&lt;90%):</strong> Faltan
-                        <strong class="text-orange-600" x-text="current.missing_weight_kg.toLocaleString('es-MX') + ' kg'"></strong> y
-                        <strong class="text-orange-600" x-text="current.missing_volume_m3 + ' m³'"></strong>
-                        para alcanzar el 90%.
+                <!-- Sección de Salida Forzada por Caso de Emergencia (<90%) -->
+                <div x-show="!current.ready_for_torton" x-cloak class="p-3.5 rounded-md bg-red-50/70 border-2 border-red-300 text-zinc-900 text-xs space-y-2.5">
+                    <div class="font-mono">
+                        <strong class="text-red-800">⚠ CANDADO NORMATIVO ACTIVO (&lt;90%):</strong> Faltan
+                        <strong class="text-red-700" x-text="current.missing_weight_kg.toLocaleString('es-MX') + ' kg'"></strong> y
+                        <strong class="text-red-700" x-text="current.missing_volume_m3 + ' m³'"></strong>
+                        para llenar el Tortón al 90%.
                     </div>
-                    <template x-if="current.sla_priority === 2">
-                        <label class="flex items-center space-x-2 pt-1 border-t border-zinc-300 font-sans cursor-pointer">
-                            <input type="checkbox" x-model="slaExceptionApproved" class="rounded">
-                            <span class="font-bold text-amber-900">Liberar por Fecha Compromiso vencida (HOY · Corte 14:00 h) con autorización gerencial</span>
-                        </label>
+
+                    <div x-show="emergencyBanner !== ''" x-cloak class="p-2.5 rounded bg-zinc-950 text-white font-mono text-[11px]">
+                        <span class="text-orange-400 font-bold">✓ ENVIADA:</span> <span x-text="emergencyBanner"></span>
+                    </div>
+                    <div x-show="emergencyError !== ''" x-cloak class="p-2 rounded bg-red-900 text-white text-[11px]" x-text="emergencyError"></div>
+
+                    <!-- Si ya fue aprobada por el Gerente, mostrar botón directo al PDF / Etiqueta Maestra -->
+                    <template x-if="currentEmergencyRequest && currentEmergencyRequest.status === 'approved' && currentEmergencyRequest.manifest_url">
+                        <div class="p-3 rounded bg-emerald-950 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <div>
+                                <span class="font-mono text-[10px] font-bold uppercase text-emerald-400 block">
+                                    ✓ EMERGENCIA APROBADA POR GERENCIA (<span x-text="currentEmergencyRequest.reviewed_by || 'Gerente'"></span>)
+                                </span>
+                                <strong class="font-mono text-xs" x-text="'Orden ' + currentEmergencyRequest.outbound_folio + ' liberada para salida inmediata'"></strong>
+                            </div>
+                            <a :href="currentEmergencyRequest.manifest_url" target="_blank"
+                               class="px-3.5 py-2 rounded bg-orange-500 hover:bg-orange-600 text-white font-mono text-[11px] font-bold uppercase text-center shrink-0">
+                                <i class="fa-solid fa-file-pdf mr-1"></i> Imprimir PDF y Etiqueta Salida ↗
+                            </a>
+                        </div>
                     </template>
+
+                    <!-- Si está pendiente de aprobación del Gerente -->
+                    <template x-if="currentEmergencyRequest && currentEmergencyRequest.status === 'pending'">
+                        <div class="p-2.5 rounded bg-amber-100 border border-amber-400 text-amber-950 font-mono text-[11px] flex items-center justify-between">
+                            <span>
+                                <strong>● EN ESPERA DE GERENCIA:</strong> Solicitud <strong x-text="currentEmergencyRequest.folio"></strong> enviada al Gerente General.
+                            </span>
+                            <span class="text-[10px] uppercase font-bold">Pendiente</span>
+                        </div>
+                    </template>
+
+                    <!-- Formulario para forzar salida por emergencia -->
+                    <div class="pt-2 border-t border-red-200 space-y-2">
+                        <div class="font-mono text-[10px] font-extrabold uppercase text-red-800">
+                            Caso de Emergencia: Forzar Salida de Tortón Incompleto (Envía Notificación Urgente al Gerente)
+                        </div>
+                        <div class="flex flex-col sm:flex-row gap-2">
+                            <input type="text"
+                                   x-model="emergencyReason"
+                                   placeholder="Escribe el motivo urgente (ej. Desabasto crítico en sucursal / pedido escolar urgente)..."
+                                   class="flex-1 bg-white border border-red-300 rounded px-3 py-2 text-xs text-zinc-950 focus:outline-none focus:border-red-600">
+                            <button type="button"
+                                    @click="requestEmergencyDispatch()"
+                                    :disabled="sendingEmergency"
+                                    class="px-4 py-2 rounded bg-red-700 hover:bg-red-800 disabled:bg-zinc-300 text-white font-mono text-[11px] font-bold uppercase tracking-wider cursor-pointer shrink-0">
+                                <i class="fa-solid fa-bell mr-1"></i>
+                                <span x-show="!sendingEmergency">Forzar Salida de Emergencia</span>
+                                <span x-show="sendingEmergency" x-cloak>Notificando...</span>
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
                 <button x-show="canDispatch"
@@ -399,6 +506,78 @@
                     <span x-show="dispatching" x-cloak>Emitiendo manifiesto...</span>
                 </button>
             </div>
+        </div>
+    </div>
+
+    <!-- Bandeja en Vivo de Solicitudes de Emergencia (<90%) y Documentos PDF Autorizados -->
+    <div x-show="emergencyRequests.length > 0" x-cloak
+         class="bg-white border-2 border-zinc-950 rounded-lg overflow-hidden shadow-2xs">
+        <div class="bg-zinc-950 text-white px-5 py-3 flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center space-x-2">
+                <span class="px-2 py-0.5 rounded bg-red-600 text-white font-mono text-[10px] font-extrabold uppercase">
+                    CASOS DE EMERGENCIA (&lt;90%)
+                </span>
+                <h3 class="text-xs font-extrabold uppercase tracking-wider">
+                    Seguimiento de Salidas de Emergencia y Documentos PDF Autorizados por Gerencia (<span x-text="emergencyRequests.length"></span>)
+                </h3>
+            </div>
+            <span class="font-mono text-[10px] text-zinc-400">Sincronización automática con Gerencia General</span>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs border-collapse font-mono tabular-nums">
+                <thead>
+                    <tr class="bg-zinc-100 border-b border-zinc-300 text-[10px] uppercase text-zinc-700">
+                        <th class="py-2.5 px-4">Folio Emergencia</th>
+                        <th class="py-2.5 px-3">Sucursal / Carga</th>
+                        <th class="py-2.5 px-3">Andén / Unidad</th>
+                        <th class="py-2.5 px-3">Motivo Urgencia</th>
+                        <th class="py-2.5 px-3">Dictamen Gerente</th>
+                        <th class="py-2.5 px-4 text-right">PDF y Etiqueta Salida</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-zinc-200">
+                    <template x-for="req in emergencyRequests" :key="req.id">
+                        <tr class="even:bg-zinc-50/80">
+                            <td class="py-2.5 px-4 font-extrabold text-zinc-950">
+                                <span x-text="req.folio"></span>
+                                <span class="block text-[10px] font-normal text-zinc-500" x-text="req.created_at"></span>
+                            </td>
+                            <td class="py-2.5 px-3 font-sans">
+                                <strong class="font-mono text-zinc-950" x-text="req.branch_code + ' · ' + req.branch_name"></strong>
+                                <span class="block font-mono text-[10px] text-zinc-500"
+                                      x-text="req.estimated_pallets + '/12 tar · ' + req.weight_pct + '% P · ' + req.volume_pct + '% V'"></span>
+                            </td>
+                            <td class="py-2.5 px-3" x-text="req.dock_code + ' · ' + req.unit_plate"></td>
+                            <td class="py-2.5 px-3 font-sans text-zinc-700 max-w-xs">
+                                <div class="truncate" x-text="req.emergency_reason"></div>
+                                <div x-show="req.manager_notes" class="text-[10px] text-zinc-500 truncate" x-text="'Nota: ' + (req.manager_notes || '')"></div>
+                            </td>
+                            <td class="py-2.5 px-3">
+                                <span class="px-2 py-0.5 rounded text-[10px] font-bold border"
+                                      :class="req.status === 'approved'
+                                        ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                                        : (req.status === 'rejected' ? 'bg-red-50 border-red-300 text-red-800' : 'bg-amber-50 border-amber-300 text-amber-900')"
+                                      x-text="req.status === 'approved' ? ('✓ AUTORIZADA (' + (req.outbound_folio || '') + ')') : (req.status === 'rejected' ? '✕ RECHAZADA' : '● PENDIENTE GERENTE')"></span>
+                            </td>
+                            <td class="py-2.5 px-4 text-right whitespace-nowrap">
+                                <template x-if="req.status === 'approved' && req.manifest_url">
+                                    <a :href="req.manifest_url" target="_blank"
+                                       class="inline-block px-3 py-1.5 rounded bg-orange-500 hover:bg-orange-600 text-white text-[10px] font-bold uppercase">
+                                        <i class="fa-solid fa-file-pdf mr-1"></i> Descargar / Imprimir PDF ↗
+                                    </a>
+                                </template>
+                                <template x-if="req.status === 'pending'">
+                                    <span class="text-[10px] text-amber-800 font-bold uppercase">Esperando firma...</span>
+                                </template>
+                                <template x-if="req.status === 'rejected'">
+                                    <span class="text-[10px] text-zinc-400 uppercase">Sin salida</span>
+                                </template>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
         </div>
     </div>
 

@@ -44,6 +44,7 @@ class RoleViewController extends Controller
             'incidents' => CedisDemoData::incidents(),
             'scheduledArrivals' => $this->loadScheduledArrivals(),
             'usersList' => $usersList,
+            'emergencyRequests' => EmergencyDispatchController::loadFormattedRequests(),
         ]);
     }
 
@@ -169,6 +170,7 @@ class RoleViewController extends Controller
             'branches' => $branches,
             'docks' => CedisDemoData::docks(),
             'scheduledArrivals' => $this->loadScheduledArrivals(),
+            'emergencyRequests' => EmergencyDispatchController::loadFormattedRequests(),
         ]);
     }
 

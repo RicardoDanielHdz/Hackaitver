@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\EmergencyDispatchController;
 use App\Http\Controllers\RoleViewController;
 use App\Http\Controllers\SlottingController;
 use App\Http\Controllers\UserManagementController;
@@ -25,9 +26,25 @@ Route::middleware('auth')->group(function () {
         ->middleware('role:gerente')
         ->name('gerente.users.toggle');
 
+    Route::post('/gerente/emergencias/{emergencyDispatchRequest}/aprobar', [EmergencyDispatchController::class, 'approve'])
+        ->middleware('role:gerente')
+        ->name('gerente.emergencies.approve');
+
+    Route::post('/gerente/emergencias/{emergencyDispatchRequest}/rechazar', [EmergencyDispatchController::class, 'reject'])
+        ->middleware('role:gerente')
+        ->name('gerente.emergencies.reject');
+
     Route::get('/embarques', [RoleViewController::class, 'embarques'])
         ->middleware('role:jefe_embarque,gerente')
         ->name('dashboard.embarques');
+
+    Route::get('/embarques/emergencias', [EmergencyDispatchController::class, 'index'])
+        ->middleware('role:jefe_embarque,operador,gerente')
+        ->name('embarques.emergencies.index');
+
+    Route::post('/embarques/emergencias', [EmergencyDispatchController::class, 'store'])
+        ->middleware('role:jefe_embarque,operador,gerente')
+        ->name('embarques.emergencies.store');
 
     Route::get('/recepcion', [RoleViewController::class, 'recepcion'])
         ->middleware('role:operador,gerente')

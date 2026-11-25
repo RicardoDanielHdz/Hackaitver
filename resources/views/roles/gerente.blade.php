@@ -17,6 +17,9 @@
      }"
      class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-5">
 
+    <!-- Alerta Urgente en Vivo de Salidas de Emergencia (<90%) -->
+    @include('roles.partials.gerente-emergencias')
+
     <!-- 1. Barra Superior Administrativa de Dirección Logística -->
     <div class="bg-white border border-zinc-200 rounded-lg p-5 shadow-2xs">
         <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-zinc-200">

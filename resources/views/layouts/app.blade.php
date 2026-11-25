@@ -35,6 +35,24 @@
 </head>
 <body class="min-h-full flex flex-col font-sans antialiased @yield('body-class', 'bg-zinc-100 text-zinc-950')">
     @auth
+    @php
+        $pendingEmergencyCount = 0;
+        if (Auth::user()->isGerente() && \Illuminate\Support\Facades\Schema::hasTable('emergency_dispatch_requests')) {
+            $pendingEmergencyCount = \App\Models\EmergencyDispatchRequest::query()->where('status', 'pending')->count();
+        }
+    @endphp
+    @if($pendingEmergencyCount > 0 && !request()->routeIs('dashboard.gerente'))
+        <div class="bg-red-700 text-white px-4 py-2 text-xs font-mono border-b border-red-900">
+            <div class="max-w-7xl mx-auto flex items-center justify-between gap-3">
+                <span>
+                    <strong>⚠ NOTIFICACIÓN DE URGENCIA:</strong> Hay {{ $pendingEmergencyCount }} solicitud(es) de Salida de Emergencia Tortón (&lt;90%) esperando tu autorización.
+                </span>
+                <a href="{{ route('dashboard.gerente') }}" class="px-3 py-1 rounded bg-white text-red-900 font-extrabold uppercase shrink-0">
+                    Revisar y Autorizar →
+                </a>
+            </div>
+        </div>
+    @endif
     <header class="bg-zinc-950 text-white border-b border-zinc-800 sticky top-0 z-50">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between gap-3">
             <!-- Identidad Corporativa -->
