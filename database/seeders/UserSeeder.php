@@ -13,22 +13,20 @@ class UserSeeder extends Seeder
      */
     public function run(): void
     {
-        $password = Hash::make('cedis2026');
-
         $users = [
             [
                 'name' => 'Lic. Roberto Peña',
                 'email' => 'gerente@cedis.com',
-                'password' => $password,
+                'password' => Hash::make('Gerente#2026'),
                 'role' => 'gerente',
-                'job_title' => 'Gerente General y Compras CEDIS',
+                'job_title' => 'Gerente General de Operaciones CEDIS',
                 'assigned_branch_code' => null,
                 'supplier_rfc' => null,
             ],
             [
                 'name' => 'Ing. Carlos Mendoza',
                 'email' => 'embarque@cedis.com',
-                'password' => $password,
+                'password' => Hash::make('Embarque#2026'),
                 'role' => 'jefe_embarque',
                 'job_title' => 'Jefe de Embarque y Tráfico',
                 'assigned_branch_code' => null,
@@ -37,16 +35,16 @@ class UserSeeder extends Seeder
             [
                 'name' => 'Juan Pérez Gómez',
                 'email' => 'operador@cedis.com',
-                'password' => $password,
+                'password' => Hash::make('Operador#2026'),
                 'role' => 'operador',
-                'job_title' => 'Operador de Recibo y Handheld',
+                'job_title' => 'Operador de Almacén y Handheld',
                 'assigned_branch_code' => null,
                 'supplier_rfc' => null,
             ],
             [
                 'name' => 'Distribuidora Metropolitana S.A.',
                 'email' => 'proveedor@cedis.com',
-                'password' => $password,
+                'password' => Hash::make('Proveedor#2026'),
                 'role' => 'proveedor',
                 'job_title' => 'Proveedor Externo Autorizado',
                 'assigned_branch_code' => null,
@@ -55,7 +53,7 @@ class UserSeeder extends Seeder
             [
                 'name' => 'Mario Gómez Lara',
                 'email' => 'sucursal@cedis.com',
-                'password' => $password,
+                'password' => Hash::make('Sucursal#2026'),
                 'role' => 'sucursal',
                 'job_title' => 'Receptor Sucursal 01 - Centro Histórico',
                 'assigned_branch_code' => 'SUC-01',

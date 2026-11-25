@@ -83,7 +83,7 @@
             <thead>
                 <tr class="bg-zinc-950 text-white text-[10px] uppercase tracking-wider">
                     <th class="py-2.5 px-4">Razón Social / Proveedor</th>
-                    <th class="py-2.5 px-3">Folio / Factura</th>
+                    <th class="py-2.5 px-3">Folio Envío / Remisión (ASN)</th>
                     <th class="py-2.5 px-3">Producto (SKU)</th>
                     <th class="py-2.5 px-3">Destino CDMX</th>
                     <th class="py-2.5 px-3">Andén / Cita</th>
@@ -158,7 +158,7 @@
                 <div class="p-6 space-y-4 text-xs font-mono">
                     <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-zinc-50 border border-zinc-200 rounded p-3.5">
                         <div>
-                            <span class="text-[10px] text-zinc-500 block">RFC FISCAL</span>
+                            <span class="text-[10px] text-zinc-500 block">ID PROVEEDOR (RFC)</span>
                             <strong x-text="selectedPadronItem.supplier_rfc"></strong>
                         </div>
                         <div>

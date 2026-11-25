@@ -121,7 +121,7 @@
                     <span class="block text-[10px] font-sans text-zinc-500"
                           x-text="(state.lookahead.pending_base_boxes + state.lookahead.pending_inter_boxes + state.lookahead.pending_light_boxes) + ' cajas por arribar'"></span>
                 </div>
-                <i class="fa-solid fa-truck-Clock text-zinc-400 text-base"></i>
+                <i class="fa-solid fa-clock text-zinc-400 text-base"></i>
             </div>
 
             <div class="p-3 rounded-md bg-zinc-50 border border-zinc-200 flex items-center justify-between">
@@ -134,7 +134,7 @@
                           :class="state.dispatch_plan.ready_for_torton ? 'text-emerald-700 font-bold' : 'text-zinc-500'"
                           x-text="state.dispatch_plan.ready_for_torton ? '● LIBERACIÓN ≥90% OK' : 'En acumulación (<90%)'"></span>
                 </div>
-                <i class="fa-solid fa-truck-Moving text-orange-500 text-base"></i>
+                <i class="fa-solid fa-truck-moving text-orange-500 text-base"></i>
             </div>
 
             <div class="p-3 rounded-md bg-zinc-50 border border-zinc-200 flex items-center justify-between">
@@ -183,14 +183,22 @@
 
     <!-- Alertas Globales -->
     <div x-show="toastMessage !== ''" x-cloak
-         class="p-3.5 rounded-md bg-zinc-950 text-white border-l-4 border-orange-500 text-xs flex items-center justify-between gap-3 shadow-2xs">
+         class="p-3.5 rounded-md bg-zinc-950 text-white border-l-4 border-orange-500 text-xs flex flex-wrap items-center justify-between gap-3 shadow-2xs">
         <div class="flex items-center space-x-2">
             <i class="fa-solid fa-circle-check text-orange-500"></i>
             <span class="font-medium" x-text="toastMessage"></span>
         </div>
-        <button type="button" @click="toastMessage = ''" class="text-zinc-400 hover:text-white cursor-pointer">
-            <i class="fa-solid fa-xmark"></i>
-        </button>
+        <div class="flex items-center space-x-2">
+            <template x-if="lastLaserPrintUrl !== ''">
+                <a :href="lastLaserPrintUrl" target="_blank"
+                   class="px-2.5 py-1 rounded bg-orange-500 hover:bg-orange-600 text-white font-mono text-[10px] font-bold uppercase">
+                    <i class="fa-solid fa-print mr-1"></i> Imprimir Etiqueta Láser Continua ↗
+                </a>
+            </template>
+            <button type="button" @click="toastMessage = ''; lastLaserPrintUrl = ''" class="text-zinc-400 hover:text-white cursor-pointer">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
     </div>
 
     <div x-show="errorMessage !== ''" x-cloak
@@ -1213,23 +1221,29 @@
             </div>
 
             <div class="p-6 space-y-4 text-xs">
-                <div class="relative aspect-square max-h-52 mx-auto bg-zinc-950 rounded border border-zinc-300 overflow-hidden flex items-center justify-center">
-                    <div id="wms-qr-reader" class="w-full h-full"></div>
+                <div class="relative w-full max-w-[260px] aspect-square mx-auto bg-zinc-950 rounded-md border border-zinc-300 overflow-hidden flex flex-col items-center justify-center">
+                    <div id="wms-qr-reader" class="absolute inset-0 w-full h-full"></div>
                     <div x-show="qrCameraState !== 'scanning'" class="absolute inset-0 flex flex-col items-center justify-center p-4 text-center bg-zinc-950 text-white">
-                        <i class="fa-solid fa-qrcode text-4xl text-orange-500 mb-2"></i>
-                        <p class="text-xs text-zinc-300">Activa la cámara o confirma el código QR cargado abajo</p>
+                        <i class="fa-solid fa-qrcode text-4xl text-orange-500 mb-2" x-show="qrCameraState !== 'loading'"></i>
+                        <i class="fa-solid fa-spinner fa-spin text-3xl text-orange-500 mb-2" x-show="qrCameraState === 'loading'" x-cloak></i>
+                        <p class="text-xs text-zinc-300" x-text="qrCameraState === 'loading' ? 'Procesando cámara / QR...' : 'Usa Cámara en Vivo, Foto Cámara Móvil o confirma el JSON abajo'"></p>
                     </div>
                 </div>
 
-                <div class="flex gap-2">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <button x-show="qrCameraState !== 'scanning'" type="button" @click="startQrCamera()"
-                            class="w-full py-2 rounded bg-zinc-950 text-white font-mono text-xs font-bold uppercase cursor-pointer">
-                        <i class="fa-solid fa-camera mr-1"></i> Abrir Cámara
+                            class="w-full py-2.5 rounded bg-orange-500 hover:bg-orange-600 text-white font-mono text-xs font-bold uppercase cursor-pointer">
+                        <i class="fa-solid fa-video mr-1"></i> Cámara en Vivo
                     </button>
                     <button x-show="qrCameraState === 'scanning'" x-cloak type="button" @click="stopQrCamera()"
-                            class="w-full py-2 rounded bg-zinc-200 text-zinc-950 font-mono text-xs font-bold uppercase cursor-pointer">
+                            class="w-full py-2.5 rounded bg-zinc-200 text-zinc-950 font-mono text-xs font-bold uppercase cursor-pointer">
                         Detener Cámara
                     </button>
+                    <label class="w-full py-2.5 rounded bg-zinc-950 hover:bg-zinc-800 text-white font-mono text-xs font-bold uppercase cursor-pointer flex items-center justify-center space-x-1.5 text-center">
+                        <i class="fa-solid fa-camera text-orange-400"></i>
+                        <span>Foto Cámara Móvil</span>
+                        <input type="file" accept="image/*" capture="environment" @change="scanQrPhoto($event)" class="hidden">
+                    </label>
                 </div>
 
                 <div class="space-y-1.5 font-mono">
@@ -1270,6 +1284,7 @@ function wmsSlottingApp(config) {
         showEntryForm: true,
         busy: false,
         toastMessage: '',
+        lastLaserPrintUrl: '',
         errorMessage: '',
 
         // Captura de producto
@@ -1279,7 +1294,6 @@ function wmsSlottingApp(config) {
         receiveBoxes: 10,
         distanceBand: 'under_10m',
         recommendation: config.initialRecommendation || null,
-        lastBatchResult: null,
 
         // Modales de inspección (Fichas)
         modalPallet: null,
@@ -1635,31 +1649,53 @@ function wmsSlottingApp(config) {
             this.qrCameraError = '';
             this.qrCameraState = 'loading';
             try {
-                if (!this.qrInstance) {
-                    this.qrInstance = new Html5Qrcode('wms-qr-reader');
-                }
-                await this.qrInstance.start(
-                    { facingMode: 'environment' },
-                    { fps: 10, qrbox: { width: 180, height: 180 } },
+                await this.stopQrCamera();
+                this.qrInstance = await window.CedisQrScanner.startLiveCamera(
+                    'wms-qr-reader',
                     (decodedText) => {
                         this.qrPayloadInput = decodedText;
                         this.stopQrCamera();
                         this.submitQrScan();
-                    },
-                    () => {}
+                    }
                 );
                 this.qrCameraState = 'scanning';
             } catch (err) {
                 this.qrCameraState = 'idle';
-                this.qrCameraError = 'No fue posible abrir la cámara. Usa el botón Procesar QR directamente.';
+                this.qrCameraError = err?.message || 'No fue posible abrir la cámara en vivo. Usa "Foto Cámara Móvil".';
             }
         },
 
         async stopQrCamera() {
-            if (this.qrInstance && this.qrCameraState === 'scanning') {
-                try { await this.qrInstance.stop(); } catch (_) {}
+            if (this.qrInstance) {
+                try {
+                    if (this.qrCameraState === 'scanning') {
+                        await this.qrInstance.stop();
+                    }
+                    this.qrInstance.clear();
+                } catch (_) {}
+                this.qrInstance = null;
             }
             this.qrCameraState = 'idle';
+        },
+
+        async scanQrPhoto(event) {
+            const file = event.target?.files?.[0];
+            if (!file) return;
+            this.qrCameraError = '';
+            this.qrCameraState = 'loading';
+            try {
+                await this.stopQrCamera();
+                const decoded = await window.CedisQrScanner.decodeImageFile(file);
+                this.qrPayloadInput = decoded;
+                await this.submitQrScan();
+            } catch (_) {
+                this.qrCameraError = 'No se detectó un QR legible en la foto. Acerca la cámara al código con buena iluminación.';
+            } finally {
+                this.qrCameraState = 'idle';
+                if (event.target) {
+                    event.target.value = '';
+                }
+            }
         },
 
         async submitQrScan() {
@@ -1676,7 +1712,8 @@ function wmsSlottingApp(config) {
                 const summary = data.result.allocations.map(a =>
                     a.pallet_code + ' (' + a.boxes_placed + ' cajas' + (a.rack_assignment ? ' → ' + a.rack_assignment.coordinate : '') + ')'
                 ).join(' + ');
-                this.toastMessage = '✓ QR [' + data.scanned_bulto + '] ubicado en: ' + summary;
+                this.lastLaserPrintUrl = data.continuous_print_url || '';
+                this.toastMessage = '✓ QR [' + data.scanned_bulto + '] comprobado y etiqueta láser emitida: ' + summary;
                 await this.fetchRecommendation();
             } catch (err) {
                 this.errorMessage = err.message;

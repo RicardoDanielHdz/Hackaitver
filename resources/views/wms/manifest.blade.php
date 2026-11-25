@@ -3,133 +3,197 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Orden de Salida {{ $order->folio }} — CEDIS CDMX</title>
+    <title>Etiqueta Única de Embarque Tortón {{ $order->folio }} — CEDIS CDMX</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', system-ui, sans-serif; }
         .mono { font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; }
+        @page { size: letter portrait; margin: 10mm; }
         @media print {
             .no-print { display: none !important; }
-            body { background: #fff !important; }
+            body { background: #fff !important; padding: 0 !important; }
+            .single-label { box-shadow: none !important; max-width: 100% !important; page-break-inside: avoid; }
         }
     </style>
 </head>
 <body class="bg-zinc-100 text-zinc-950 py-6 px-4">
-    <div class="max-w-4xl mx-auto bg-white border-2 border-zinc-950 p-6 sm:p-8 space-y-6">
+    <div class="max-w-4xl mx-auto space-y-4">
         <!-- Barra no imprimible -->
-        <div class="no-print flex items-center justify-between pb-4 border-b border-zinc-200">
+        <div class="no-print bg-white border border-zinc-300 rounded-md p-3.5 flex flex-wrap items-center justify-between gap-3">
             <a href="{{ route('wms.index', ['branch' => $order->branch->code]) }}"
                class="text-xs font-bold uppercase text-zinc-700 hover:text-zinc-950">
                 ← Volver al Motor de Acomodo WMS
             </a>
             <button type="button" onclick="window.print()"
                     class="px-4 py-2 rounded bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold uppercase cursor-pointer">
-                Imprimir / Guardar PDF
+                Imprimir Etiqueta Única de Embarque (PDF)
             </button>
         </div>
 
-        <!-- Encabezado Oficial -->
-        <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4 border-b-2 border-zinc-950 pb-5">
-            <div>
-                <div class="mono text-[11px] font-bold uppercase tracking-widest text-orange-600">
-                    ORDEN DE SALIDA Y EXTRACCIÓN DE RACK · CEDIS PAPELERÍA CDMX
+        <!-- ETIQUETA ÚNICA DE EMBARQUE FINAL TORTÓN (1 SOLA HOJA · 1 SOLO QR) -->
+        <div class="single-label bg-white border-2 border-zinc-950 rounded-xs overflow-hidden shadow-md">
+            <!-- Cabecera -->
+            <div class="bg-zinc-950 text-white px-5 py-3 flex flex-wrap items-center justify-between gap-2 mono">
+                <div>
+                    <span class="text-[10px] font-bold uppercase tracking-widest text-orange-400">
+                        ETIQUETA MAESTRA DE EMBARQUE FINAL TORTÓN · CEDIS CDMX
+                    </span>
+                    <h1 class="text-xl font-extrabold uppercase tracking-tight">
+                        {{ $order->folio }} · {{ $order->branch->code }} {{ $order->branch->name }}
+                    </h1>
                 </div>
-                <h1 class="text-2xl font-extrabold uppercase tracking-tight mt-1">
-                    Relación de Embarque {{ $order->folio }}
-                </h1>
-                <div class="mono text-xs text-zinc-700 mt-1">
-                    DESTINO: <strong>{{ $order->branch->code }} · {{ $order->branch->name }}</strong> ({{ $order->branch->rack_code }})
+                <div class="text-right text-xs">
+                    <span class="px-2.5 py-0.5 bg-orange-500 text-zinc-950 font-extrabold uppercase inline-block">
+                        MARCHAMO: {{ $totals['seal_code'] }}
+                    </span>
+                    <div class="text-[10px] text-zinc-300 mt-1">
+                        EMISIÓN: {{ $order->dispatched_at?->format('d/m/Y H:i') }}
+                    </div>
                 </div>
-                <div class="mono text-xs text-zinc-500 mt-0.5">
-                    EMISIÓN: {{ $order->dispatched_at?->format('d/m/Y H:i') }} · AUTORIZÓ: {{ $order->createdBy?->name ?? 'Sistema WMS' }}
-                </div>
             </div>
 
-            <div class="border-2 border-zinc-950 p-2 text-center shrink-0">
-                <img src="{{ $qrSvgDataUri }}" alt="QR Maestro {{ $order->folio }}" class="w-28 h-28 mx-auto">
-                <div class="mono text-[9px] font-bold mt-1">QR MAESTRO SUCURSAL</div>
-            </div>
-        </div>
+            <div class="p-5 space-y-4 mono text-xs">
+                <!-- Bloque 1: 1 Único QR + Origen, Destino, Unidad y Totales -->
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+                    <div class="md:col-span-3 border-2 border-zinc-950 p-2 text-center bg-white">
+                        <img src="{{ $qrSvgDataUri }}" alt="QR Maestro {{ $order->folio }}" class="w-36 h-36 mx-auto" style="image-rendering: pixelated;">
+                        <div class="text-[9px] font-bold mt-1 uppercase">QR ÚNICO DE EMBARQUE</div>
+                        <div class="text-[9px] text-zinc-500">{{ $order->folio }}</div>
+                    </div>
 
-        <!-- Datos de Unidad y Verificación Dual Tortón -->
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mono text-xs bg-zinc-50 border border-zinc-300 p-4">
-            <div>
-                <div class="text-[10px] text-zinc-500 uppercase">Andén Salida</div>
-                <div class="font-bold text-base">{{ $order->dock_code }}</div>
-            </div>
-            <div>
-                <div class="text-[10px] text-zinc-500 uppercase">Placas Tortón</div>
-                <div class="font-bold text-base">{{ $order->unit_plate }}</div>
-            </div>
-            <div>
-                <div class="text-[10px] text-zinc-500 uppercase">Peso Consolidado</div>
-                <div class="font-bold text-base">{{ number_format($order->total_weight_kg, 1) }} kg ({{ $order->weight_pct }}%)</div>
-            </div>
-            <div>
-                <div class="text-[10px] text-zinc-500 uppercase">Volumen Envolvente</div>
-                <div class="font-bold text-base">{{ number_format($order->total_volume_m3, 2) }} m³ ({{ $order->volume_pct }}%)</div>
-            </div>
-            <div class="col-span-2 sm:col-span-4 pt-2 border-t border-zinc-200 flex flex-wrap justify-between gap-2">
-                <span><strong>OPERADOR TRANSPORTE:</strong> {{ $order->driver_name }}</span>
-                <span><strong>TARIMAS:</strong> {{ $order->pallet_count }} / 12</span>
-            </div>
-        </div>
+                    <div class="md:col-span-9 space-y-2.5">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            <div class="border border-zinc-300 bg-zinc-50 p-2.5">
+                                <span class="text-[9px] font-bold uppercase text-zinc-500 block">ORIGEN / SALIDA CEDIS</span>
+                                <strong class="font-sans text-sm text-zinc-950">CEDIS CDMX · Andén {{ $order->dock_code }}</strong>
+                                <div class="text-[10px] text-zinc-600 mt-0.5">Rack liberado: <strong>{{ $order->branch->rack_code }}</strong> · Autorizó: {{ $order->createdBy?->name ?? 'Sistema WMS' }}</div>
+                            </div>
 
-        @if($order->exception_authorized)
-            <div class="p-3 bg-zinc-950 text-white border-l-4 border-orange-500 text-xs">
-                <strong class="mono text-orange-400">EXCEPCIÓN GERENCIAL AUDITADA (&lt;90%):</strong>
-                {{ $order->exception_reason }}
-            </div>
-        @endif
+                            <div class="border-2 border-zinc-950 bg-white p-2.5">
+                                <span class="text-[9px] font-bold uppercase text-orange-600 block">DESTINO FINAL (SUCURSAL CDMX)</span>
+                                <strong class="font-sans text-sm text-zinc-950">{{ $order->branch->code }} · {{ $order->branch->name }}</strong>
+                                <div class="text-[10px] text-zinc-700 mt-0.5">Zona {{ $order->branch->zone }} ({{ $order->branch->distance_km }} km) · Placas <strong>{{ $order->unit_plate }}</strong></div>
+                                <div class="text-[10px] text-zinc-600">Operador: {{ $order->driver_name }}</div>
+                            </div>
+                        </div>
 
-        <!-- Secuencia Numerada de Extracción de Rack y Carga en Tortón -->
-        <div>
-            <h2 class="text-xs font-extrabold uppercase tracking-wider text-zinc-950 mb-2">
-                Plan de Extracción (Rack 4×8 → Plataforma Tortón Balanceada por Ejes)
-            </h2>
-            <table class="w-full text-left text-xs border-collapse mono">
-                <thead>
-                    <tr class="bg-zinc-950 text-white text-[10px] uppercase">
-                        <th class="py-2 px-2.5">Paso</th>
-                        <th class="py-2 px-2.5">Tarima</th>
-                        <th class="py-2 px-2.5">Origen Rack</th>
-                        <th class="py-2 px-2.5">Posición Tortón</th>
-                        <th class="py-2 px-2.5">Peso / Vol</th>
-                        <th class="py-2 px-2.5">Contenido SKUs</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-zinc-200 border border-zinc-300">
-                    @foreach(($order->loading_sequence ?? []) as $step)
-                        <tr>
-                            <td class="py-2 px-2.5 font-bold">#{{ $step['step'] }}</td>
-                            <td class="py-2 px-2.5 font-bold">{{ $step['pallet_code'] }}</td>
-                            <td class="py-2 px-2.5">{{ $step['from_rack'] }}</td>
-                            <td class="py-2 px-2.5">
-                                <span class="font-bold text-orange-600">{{ $step['truck_slot_label'] }}</span>
-                                <span class="block text-[10px] text-zinc-500 font-sans">{{ $step['axle_zone'] }}</span>
-                            </td>
-                            <td class="py-2 px-2.5">
-                                {{ number_format($step['weight_kg'], 1) }} kg
-                                <span class="block text-[10px] text-zinc-500">{{ number_format($step['volume_m3'], 2) }} m³</span>
-                            </td>
-                            <td class="py-2 px-2.5 font-sans text-[11px] text-zinc-700">
-                                {{ $step['skus_summary'] }}
-                                @if(!empty($step['has_liquids']))
-                                    <span class="mono text-[9px] font-bold px-1.5 py-0.5 bg-zinc-950 text-orange-400 rounded ml-1">LÍQUIDOS</span>
+                        <div class="grid grid-cols-5 gap-2 bg-zinc-50 border border-zinc-300 p-2.5 text-center">
+                            <div>
+                                <span class="text-[9px] text-zinc-500 uppercase block">Tarimas</span>
+                                <strong class="text-sm text-zinc-950">{{ $order->pallet_count }}/12</strong>
+                            </div>
+                            <div>
+                                <span class="text-[9px] text-zinc-500 uppercase block">Cajas</span>
+                                <strong class="text-sm text-zinc-950">{{ number_format($totals['total_boxes']) }}</strong>
+                            </div>
+                            <div>
+                                <span class="text-[9px] text-zinc-500 uppercase block">Piezas</span>
+                                <strong class="text-sm text-zinc-950">{{ number_format($totals['total_pieces']) }}</strong>
+                            </div>
+                            <div>
+                                <span class="text-[9px] text-zinc-500 uppercase block">Peso</span>
+                                <strong class="text-sm text-zinc-950">{{ number_format($order->total_weight_kg, 0) }} kg</strong>
+                                <span class="block text-[9px] text-emerald-700 font-bold">{{ $order->weight_pct }}%</span>
+                            </div>
+                            <div>
+                                <span class="text-[9px] text-zinc-500 uppercase block">Volumen</span>
+                                <strong class="text-sm text-zinc-950">{{ number_format($order->total_volume_m3, 2) }} m³</strong>
+                                <span class="block text-[9px] text-emerald-700 font-bold">{{ $order->volume_pct }}%</span>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-wrap items-center justify-between gap-2 text-[10px]">
+                            <div class="flex flex-wrap gap-1.5">
+                                <span class="px-2 py-0.5 bg-zinc-950 text-white font-bold uppercase">{{ $totals['distinct_skus'] }} SKUs</span>
+                                @if($totals['has_liquids'])
+                                    <span class="px-2 py-0.5 bg-red-600 text-white font-bold uppercase">⚠ CONTIENE LÍQUIDOS (EN PISO)</span>
                                 @endif
-                            </td>
-                        </tr>
-                    @endforeach
-                </tbody>
-            </table>
-        </div>
+                                @if($totals['has_hygroscopic'])
+                                    <span class="px-2 py-0.5 bg-zinc-100 border border-zinc-950 text-zinc-950 font-bold uppercase">PAPEL · MANTENER SECO</span>
+                                @endif
+                            </div>
+                            <span class="font-sans text-zinc-600 truncate max-w-xs">
+                                <strong>Orígenes:</strong> {{ $totals['suppliers_list'] ?: 'CEDIS CDMX' }}
+                            </span>
+                        </div>
+                    </div>
+                </div>
 
-        <!-- Firmas -->
-        <div class="grid grid-cols-3 gap-6 pt-8 text-center text-[11px] mono">
-            <div class="border-t border-zinc-950 pt-2">JEFE DE EMBARQUE CEDIS</div>
-            <div class="border-t border-zinc-950 pt-2">OPERADOR TORTÓN ({{ $order->unit_plate }})</div>
-            <div class="border-t border-zinc-950 pt-2">RECEPTOR {{ $order->branch->code }}</div>
+                @if($order->exception_authorized)
+                    <div class="p-2.5 bg-zinc-950 text-white border-l-4 border-orange-500 text-[11px]">
+                        <strong class="text-orange-400">EXCEPCIÓN GERENCIAL (&lt;90%):</strong> {{ $order->exception_reason }}
+                    </div>
+                @endif
+
+                <!-- Bloque 2: Desglose Consolidado del Contenido (Compacto dentro de la misma etiqueta) -->
+                <div>
+                    <div class="text-[10px] font-extrabold uppercase tracking-wider text-zinc-950 mb-1.5">
+                        Desglose Consolidado del Contenido Embarcado
+                    </div>
+                    <table class="w-full text-left text-[11px] border-collapse border border-zinc-300">
+                        <thead>
+                            <tr class="bg-zinc-950 text-white text-[9px] uppercase">
+                                <th class="py-1.5 px-2">SKU</th>
+                                <th class="py-1.5 px-2">Descripción</th>
+                                <th class="py-1.5 px-2">Zona</th>
+                                <th class="py-1.5 px-2 text-right">Cajas</th>
+                                <th class="py-1.5 px-2 text-right">Piezas</th>
+                                <th class="py-1.5 px-2 text-right">Peso</th>
+                                <th class="py-1.5 px-2">Tarimas</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-zinc-200">
+                            @foreach($skuSummary as $row)
+                                <tr class="even:bg-zinc-50/80">
+                                    <td class="py-1.5 px-2 font-extrabold whitespace-nowrap">{{ $row['sku'] }}</td>
+                                    <td class="py-1.5 px-2 font-sans font-semibold text-zinc-900">{{ $row['name'] }}</td>
+                                    <td class="py-1.5 px-2 text-[10px]">
+                                        {{ $row['stow_zone'] }}
+                                        @if($row['is_liquid']) <span class="text-red-700 font-bold">(LÍQ)</span> @endif
+                                    </td>
+                                    <td class="py-1.5 px-2 text-right font-bold">{{ number_format($row['boxes']) }}</td>
+                                    <td class="py-1.5 px-2 text-right">{{ number_format($row['pieces']) }}</td>
+                                    <td class="py-1.5 px-2 text-right font-bold">{{ number_format($row['weight_kg'], 1) }} kg</td>
+                                    <td class="py-1.5 px-2 text-[9px] text-zinc-600">{{ $row['pallets_list'] }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Bloque 3: Distribución Compacta por Ejes Tortón (T-01..T-12) -->
+                <div class="grid grid-cols-3 gap-2 text-[10px] text-center bg-zinc-50 border border-zinc-300 p-2">
+                    <div class="bg-white border border-zinc-200 p-1.5">
+                        <span class="text-zinc-500 block">EJE DELANTERO</span>
+                        <strong class="text-zinc-950">T-01 a T-04 (Base / Pesado)</strong>
+                    </div>
+                    <div class="bg-white border border-zinc-200 p-1.5">
+                        <span class="text-zinc-500 block">EJE CENTRAL</span>
+                        <strong class="text-zinc-950">T-05 a T-08 (Intermedio)</strong>
+                    </div>
+                    <div class="bg-white border border-zinc-200 p-1.5">
+                        <span class="text-zinc-500 block">EJE TRASERO</span>
+                        <strong class="text-zinc-950">T-09 a T-12 (Descarga 1ª)</strong>
+                    </div>
+                </div>
+
+                <!-- Bloque 4: Firmas de Acuse -->
+                <div class="grid grid-cols-3 gap-6 pt-5 text-center text-[10px]">
+                    <div class="border-t border-zinc-950 pt-1.5">
+                        JEFE DE EMBARQUE CEDIS
+                        <span class="block text-[9px] text-zinc-500">Andén {{ $order->dock_code }} · {{ $totals['seal_code'] }}</span>
+                    </div>
+                    <div class="border-t border-zinc-950 pt-1.5">
+                        OPERADOR TORTÓN ({{ $order->unit_plate }})
+                        <span class="block text-[9px] text-zinc-500">{{ $order->driver_name }}</span>
+                    </div>
+                    <div class="border-t border-zinc-950 pt-1.5">
+                        RECEPTOR {{ $order->branch->code }}
+                        <span class="block text-[9px] text-zinc-500">Recibí {{ $order->pallet_count }} tar / {{ number_format($totals['total_boxes']) }} cjas</span>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </body>

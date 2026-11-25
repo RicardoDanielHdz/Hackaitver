@@ -14,6 +14,8 @@ class PalletItem extends Model
         'pallet_id',
         'product_id',
         'batch_code',
+        'internal_label_code',
+        'scanned_bulto_code',
         'quantity_boxes',
         'assigned_zone_priority',
         'layer_index',
@@ -22,6 +24,11 @@ class PalletItem extends Model
         'orientation_instruction',
         'placement_reason',
         'ergonomic_warning',
+        'origin_supplier',
+        'origin_dock',
+        'planned_rack_coordinate',
+        'outbound_dock_target',
+        'outbound_cutoff',
         'placed_by_user_id',
     ];
 

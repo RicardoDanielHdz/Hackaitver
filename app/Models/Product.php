@@ -90,18 +90,6 @@ class Product extends Model
     }
 
     /**
-     * Calcula el máximo de cajas de este SKU permitidas en una sola tarima por camas operativas y peso.
-     */
-    public function maxBoxesPerPallet(): int
-    {
-        $byLayers = $this->boxesPerLayer() * $this->max_layers_operational;
-        $byWeight = (int) floor(978.0 / max(0.1, (float) $this->master_weight_kg));
-        $byVolume = (int) floor(1.95 / max(0.001, (float) $this->master_volume_m3));
-
-        return max(1, min($byLayers, $byWeight, $byVolume));
-    }
-
-    /**
      * Devuelve el mensaje ergonómico conforme a la NOM-036-1-STPS-2018.
      */
     public function ergonomicAlertMessage(): ?string

@@ -22,8 +22,57 @@
         showManifestModal: false,
         activeManifest: null,
         dispatchedList: [
-            { folio: 'EMB-2026-041', branch: 'SUC-02 Polanco', dock: 'E2', plate: '71-VR-8B', driver: 'Miguel Ángel Torres', pallets: 12, weightPct: 93.2, volPct: 91.7, time: '09:45' },
-            { folio: 'EMB-2026-040', branch: 'SUC-10 Tláhuac', dock: 'E1', plate: '55-XA-2F', driver: 'Roberto Ruiz Hernández', pallets: 12, weightPct: 94.3, volPct: 92.6, time: '08:50' }
+            {
+                folio: 'EMB-2026-041',
+                seal: 'MCH-SUC-02-0041',
+                branch: 'SUC-02 Polanco',
+                rack: 'RACK-02',
+                zone: 'Poniente (14 km)',
+                dock: 'E2',
+                plate: '71-VR-8B',
+                driver: 'Miguel Ángel Torres',
+                pallets: 12,
+                weightKg: 11180,
+                volM3: 26.22,
+                weightPct: 93.2,
+                volPct: 91.7,
+                totalBoxes: 540,
+                totalPieces: 8640,
+                hasLiquids: false,
+                hasHygroscopic: true,
+                contents: [
+                    { sku: 'PAP-006', name: 'Cartulina opalina blanca 225g paquete 100h', stow_zone: 'Base / Pesado', boxes: 240, pieces: 2400, weight_kg: 5024.0, is_liquid: false, supplier: 'Copamex Papelero S.A.' },
+                    { sku: 'ESC-001', name: 'Lápiz grafito HB #2 caja 12 piezas', stow_zone: 'Intermedio / Estándar', boxes: 192, pieces: 4608, weight_kg: 3820.0, is_liquid: false, supplier: 'Azor México S.A.' },
+                    { sku: 'ARC-008', name: 'Carpeta panorámica 1 pulgada carta', stow_zone: 'Superior / Ligero', boxes: 108, pieces: 1632, weight_kg: 2336.0, is_liquid: false, supplier: 'Oxford Archivo S.A.' }
+                ],
+                time: '09:45'
+            },
+            {
+                folio: 'EMB-2026-040',
+                seal: 'MCH-SUC-10-0040',
+                branch: 'SUC-10 Tláhuac',
+                rack: 'RACK-10',
+                zone: 'Oriente (35 km)',
+                dock: 'E1',
+                plate: '55-XA-2F',
+                driver: 'Roberto Ruiz Hernández',
+                pallets: 12,
+                weightKg: 11310,
+                volM3: 26.48,
+                weightPct: 94.3,
+                volPct: 92.6,
+                totalBoxes: 580,
+                totalPieces: 9420,
+                hasLiquids: true,
+                hasHygroscopic: true,
+                contents: [
+                    { sku: 'PAP-007', name: 'Papel bond blanco carta 75g resma 500h', stow_zone: 'Base / Pesado', boxes: 240, pieces: 2400, weight_kg: 5688.0, is_liquid: false, supplier: 'Copamex Papelero S.A.' },
+                    { sku: 'ADH-012', name: 'Pegamento líquido Resistol 850 1 kg', stow_zone: 'Base / Pesado', boxes: 80, pieces: 960, weight_kg: 1096.0, is_liquid: true, supplier: 'Henkel Adhesivos México' },
+                    { sku: 'OFI-006', name: 'Grapas estándar 26/6 caja 5,000 pzas', stow_zone: 'Base / Pesado', boxes: 140, pieces: 3360, weight_kg: 2331.0, is_liquid: false, supplier: 'Distribuidora Metropolitana S.A.' },
+                    { sku: 'ARC-011', name: 'Carpeta panorámica 3 argollas 2 pulgadas', stow_zone: 'Superior / Ligero', boxes: 120, pieces: 2700, weight_kg: 2195.0, is_liquid: false, supplier: 'Oxford Archivo S.A.' }
+                ],
+                time: '08:50'
+            }
         ],
         get current() {
             return this.branches[this.selectedIndex];
@@ -60,13 +109,23 @@
                 const nextNum = 42 + this.dispatchedList.length;
                 const newEntry = {
                     folio: 'EMB-2026-0' + nextNum,
+                    seal: 'MCH-' + this.current.code + '-00' + nextNum,
                     branch: this.current.code + ' ' + this.current.name,
+                    rack: this.current.rack_code,
+                    zone: this.current.zone + ' (' + this.current.distance_km + ' km)',
                     dock: this.outboundDock,
                     plate: this.unitPlate,
                     driver: this.driverName,
                     pallets: Math.min(12, this.current.pallets),
+                    weightKg: this.current.weight_kg,
+                    volM3: this.current.volume_m3,
                     weightPct: this.current.weight_pct,
                     volPct: this.current.volume_pct,
+                    totalBoxes: this.current.total_boxes || 0,
+                    totalPieces: this.current.total_pieces || 0,
+                    hasLiquids: Boolean(this.current.has_liquids),
+                    hasHygroscopic: Boolean(this.current.has_hygroscopic),
+                    contents: this.current.cargo_contents || [],
                     time: new Date().toTimeString().slice(0, 5)
                 };
                 this.dispatchedList.unshift(newEntry);
@@ -397,53 +456,154 @@
         </div>
     </div>
 
-    <!-- Modal Imprimible: Ficha de Relación de Embarque con QR Maestro -->
+    <!-- Modal Imprimible: Etiqueta Maestra y Relación de Embarque Completa con Desglose de Contenido -->
     <div x-show="showManifestModal" x-cloak class="fixed inset-0 z-50 bg-zinc-950/75 flex items-center justify-center p-4">
-        <div @click.outside="showManifestModal = false"
-             class="bg-white text-zinc-950 border-2 border-zinc-950 rounded-lg max-w-2xl w-full overflow-hidden shadow-2xl">
-            <div class="bg-zinc-950 text-white px-6 py-4 flex items-center justify-between">
-                <div>
-                    <span class="px-2 py-0.5 rounded bg-orange-500 text-zinc-950 font-mono text-[10px] font-extrabold uppercase">
-                        DOCUMENTO OFICIAL DE SALIDA · CEDIS CDMX
-                    </span>
-                    <h3 class="text-lg font-extrabold text-white mt-1"
-                        x-text="'Relación de Embarque ' + (activeManifest?.folio || dispatchedList[0].folio)"></h3>
-                </div>
-                <button type="button" @click="showManifestModal = false" class="text-zinc-400 hover:text-white cursor-pointer">
-                    <i class="fa-solid fa-xmark text-lg"></i>
-                </button>
-            </div>
-
-            <div class="p-6 space-y-4 text-xs">
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-zinc-50 border border-zinc-200 rounded-md p-4 font-mono">
-                    <div class="space-y-1.5">
-                        <div><strong>DESTINO:</strong> <span class="font-sans font-bold text-zinc-950" x-text="activeManifest?.branch || dispatchedList[0].branch"></span></div>
-                        <div><strong>ANDÉN / PLACAS:</strong> <span x-text="(activeManifest?.dock || outboundDock) + ' · ' + (activeManifest?.plate || unitPlate)"></span></div>
-                        <div><strong>OPERADOR:</strong> <span class="font-sans" x-text="activeManifest?.driver || driverName"></span></div>
-                        <div><strong>TARIMAS / LLENADO:</strong> <span x-text="'12 / 12 (' + (activeManifest?.weightPct || 93.2) + '% P · ' + (activeManifest?.volPct || 91.7) + '% V)'"></span></div>
+        <template x-if="activeManifest">
+            <div @click.outside="showManifestModal = false"
+                 class="bg-white text-zinc-950 border-2 border-zinc-950 rounded-lg max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden shadow-2xl">
+                <div class="bg-zinc-950 text-white px-6 py-4 flex items-center justify-between shrink-0">
+                    <div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="px-2 py-0.5 rounded bg-orange-500 text-zinc-950 font-mono text-[10px] font-extrabold uppercase">
+                                ETIQUETA MAESTRA DE EMBARQUE FINAL TORTÓN · CEDIS CDMX
+                            </span>
+                            <span class="font-mono text-[11px] text-zinc-300" x-text="'MARCHAMO: ' + (activeManifest.seal || 'MCH-2026')"></span>
+                        </div>
+                        <h3 class="text-lg font-extrabold text-white mt-1"
+                            x-text="activeManifest.folio + ' · ' + activeManifest.branch"></h3>
                     </div>
-                    <div class="border-2 border-zinc-950 bg-white p-3 text-center shrink-0">
-                        <i class="fa-solid fa-qrcode text-5xl text-zinc-950"></i>
-                        <div class="text-[9px] font-bold mt-1">QR MAESTRO DESTINO</div>
-                    </div>
+                    <button type="button" @click="showManifestModal = false" class="text-zinc-400 hover:text-white cursor-pointer">
+                        <i class="fa-solid fa-xmark text-lg"></i>
+                    </button>
                 </div>
 
-                <p class="text-zinc-600">
-                    Este manifiesto acompaña físicamente al operador del Tortón y se escanea al arribar a la sucursal destino para confirmar el cierre del viaje.
-                </p>
-            </div>
+                <div class="p-6 space-y-4 text-xs overflow-y-auto">
+                    <!-- Bloque 1: Origen, Destino, Unidad y QR Maestro -->
+                    <div class="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center bg-zinc-50 border border-zinc-200 rounded-md p-4 font-mono">
+                        <div class="sm:col-span-9 space-y-2">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                <div class="bg-white border border-zinc-300 rounded p-2.5">
+                                    <span class="text-[9px] text-zinc-500 uppercase block">ORIGEN / SALIDA</span>
+                                    <strong class="font-sans text-zinc-950">CEDIS CDMX · Andén <span x-text="activeManifest.dock"></span></strong>
+                                    <div class="text-[10px] text-zinc-600" x-text="'Rack liberado: ' + (activeManifest.rack || 'RACK-01') + ' · Salida ' + activeManifest.time"></div>
+                                </div>
+                                <div class="bg-white border-2 border-zinc-950 rounded p-2.5">
+                                    <span class="text-[9px] text-orange-600 font-bold uppercase block">DESTINO FINAL</span>
+                                    <strong class="font-sans text-zinc-950" x-text="activeManifest.branch"></strong>
+                                    <div class="text-[10px] text-zinc-600" x-text="(activeManifest.zone || 'CDMX') + ' · Placas ' + activeManifest.plate"></div>
+                                </div>
+                            </div>
 
-            <div class="px-6 py-3 bg-zinc-100 border-t border-zinc-200 flex justify-end space-x-2">
-                <button type="button" @click="showManifestModal = false"
-                        class="px-4 py-1.5 rounded border border-zinc-300 bg-white text-xs font-bold uppercase text-zinc-700 cursor-pointer">
-                    Cerrar
-                </button>
-                <button type="button" onclick="window.print()"
-                        class="px-4 py-1.5 rounded bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold uppercase cursor-pointer">
-                    <i class="fa-solid fa-print mr-1"></i> Imprimir / PDF
-                </button>
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center bg-white border border-zinc-200 rounded p-2">
+                                <div>
+                                    <span class="text-[9px] text-zinc-500 block">TARIMAS</span>
+                                    <strong class="text-zinc-950" x-text="activeManifest.pallets + ' / 12'"></strong>
+                                </div>
+                                <div>
+                                    <span class="text-[9px] text-zinc-500 block">CAJAS MÁSTER</span>
+                                    <strong class="text-zinc-950" x-text="Number(activeManifest.totalBoxes || 0).toLocaleString('es-MX')"></strong>
+                                </div>
+                                <div>
+                                    <span class="text-[9px] text-zinc-500 block">PIEZAS TOTALES</span>
+                                    <strong class="text-zinc-950" x-text="Number(activeManifest.totalPieces || 0).toLocaleString('es-MX')"></strong>
+                                </div>
+                                <div>
+                                    <span class="text-[9px] text-zinc-500 block">CAPACIDAD</span>
+                                    <strong class="text-emerald-700" x-text="activeManifest.weightPct + '% P · ' + activeManifest.volPct + '% V'"></strong>
+                                </div>
+                            </div>
+
+                            <div class="flex flex-wrap items-center justify-between gap-2 text-[10px]">
+                                <span><strong>OPERADOR:</strong> <span class="font-sans" x-text="activeManifest.driver"></span></span>
+                                <div class="flex flex-wrap gap-1">
+                                    <template x-if="activeManifest.hasLiquids">
+                                        <span class="px-1.5 py-0.5 rounded bg-red-600 text-white font-bold">⚠ CONTIENE LÍQUIDOS</span>
+                                    </template>
+                                    <template x-if="activeManifest.hasHygroscopic">
+                                        <span class="px-1.5 py-0.5 rounded bg-zinc-950 text-white font-bold">PAPEL · MANTENER SECO</span>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="sm:col-span-3 border-2 border-zinc-950 bg-white p-3 text-center">
+                            <i class="fa-solid fa-qrcode text-6xl text-zinc-950"></i>
+                            <div class="text-[9px] font-bold mt-1.5 uppercase">QR MAESTRO CONTENIDO</div>
+                            <div class="text-[9px] text-zinc-500" x-text="activeManifest.folio"></div>
+                        </div>
+                    </div>
+
+                    <!-- Bloque 2: Desglose de Contenido Embarcado -->
+                    <div class="border border-zinc-300 rounded overflow-hidden">
+                        <div class="bg-zinc-950 text-white px-3.5 py-2 flex items-center justify-between font-mono text-[10px] uppercase">
+                            <span>Contenido Consolidado dentro de la Unidad Tortón</span>
+                            <span class="text-orange-400" x-text="(activeManifest.contents || []).length + ' SKUs · ' + Number(activeManifest.weightKg || 0).toLocaleString('es-MX') + ' kg · ' + (activeManifest.volM3 || 0) + ' m³'"></span>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-xs border-collapse font-mono tabular-nums">
+                                <thead>
+                                    <tr class="bg-zinc-100 border-b border-zinc-300 text-[10px] uppercase text-zinc-700">
+                                        <th class="py-2 px-3">SKU</th>
+                                        <th class="py-2 px-3">Artículo / Proveedor Origen</th>
+                                        <th class="py-2 px-2">Zona Estiba</th>
+                                        <th class="py-2 px-2 text-right">Cajas</th>
+                                        <th class="py-2 px-2 text-right">Piezas</th>
+                                        <th class="py-2 px-3 text-right">Peso</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-zinc-200">
+                                    <template x-for="item in (activeManifest.contents || [])" :key="item.sku">
+                                        <tr class="even:bg-zinc-50/80">
+                                            <td class="py-2 px-3 font-extrabold text-zinc-950 whitespace-nowrap" x-text="item.sku"></td>
+                                            <td class="py-2 px-3 font-sans">
+                                                <div class="font-bold text-zinc-900" x-text="item.name"></div>
+                                                <div class="text-[10px] text-zinc-500" x-text="'Origen: ' + (item.supplier || 'Proveedor CDMX')"></div>
+                                            </td>
+                                            <td class="py-2 px-2 text-[10px]">
+                                                <span x-text="item.stow_zone"></span>
+                                                <template x-if="item.is_liquid">
+                                                    <span class="block text-red-700 font-bold">LÍQUIDO</span>
+                                                </template>
+                                            </td>
+                                            <td class="py-2 px-2 text-right font-bold text-zinc-950" x-text="Number(item.boxes).toLocaleString('es-MX')"></td>
+                                            <td class="py-2 px-2 text-right text-zinc-700" x-text="Number(item.pieces).toLocaleString('es-MX')"></td>
+                                            <td class="py-2 px-3 text-right font-bold" x-text="Number(item.weight_kg).toLocaleString('es-MX') + ' kg'"></td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Bloque 3: Distribución de Ejes y Acuse -->
+                    <div class="grid grid-cols-3 gap-2 font-mono text-[10px] text-center bg-zinc-50 border border-zinc-200 rounded p-2.5">
+                        <div class="bg-white border border-zinc-200 rounded p-1.5">
+                            <span class="text-zinc-500 block">EJE DELANTERO</span>
+                            <strong class="text-zinc-950">T-01 a T-04 (Carga Base)</strong>
+                        </div>
+                        <div class="bg-white border border-zinc-200 rounded p-1.5">
+                            <span class="text-zinc-500 block">EJE CENTRAL</span>
+                            <strong class="text-zinc-950">T-05 a T-08 (Intermedio)</strong>
+                        </div>
+                        <div class="bg-white border border-zinc-200 rounded p-1.5">
+                            <span class="text-zinc-500 block">EJE TRASERO</span>
+                            <strong class="text-zinc-950">T-09 a T-12 (Descarga 1ª)</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="px-6 py-3 bg-zinc-100 border-t border-zinc-200 flex justify-end space-x-2 shrink-0">
+                    <button type="button" @click="showManifestModal = false"
+                            class="px-4 py-1.5 rounded border border-zinc-300 bg-white text-xs font-bold uppercase text-zinc-700 cursor-pointer">
+                        Cerrar
+                    </button>
+                    <button type="button" onclick="window.print()"
+                            class="px-4 py-1.5 rounded bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold uppercase cursor-pointer">
+                        <i class="fa-solid fa-print mr-1"></i> Imprimir Etiqueta y Manifiesto PDF
+                    </button>
+                </div>
             </div>
-        </div>
+        </template>
     </div>
 
 </div>

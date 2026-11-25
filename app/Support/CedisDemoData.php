@@ -117,81 +117,15 @@ final class CedisDemoData
     {
         return [
             'inbound' => [
-                ['code' => 'R1', 'status' => 'EN OPERACIÓN', 'oc' => 'OC-2026-0103', 'supplier' => 'Alimentos del Golfo', 'slot' => '09:00 – 11:00', 'progress' => '28/32 bultos'],
-                ['code' => 'R2', 'status' => 'EN OPERACIÓN', 'oc' => 'OC-2026-0104', 'supplier' => 'Distribuidora Metropolitana', 'slot' => '10:00 – 12:00', 'progress' => '18/24 bultos'],
-                ['code' => 'R3', 'status' => 'PROGRAMADO', 'oc' => 'OC-2026-0106', 'supplier' => 'Empaques Olmeca', 'slot' => '12:00 – 13:30', 'progress' => 'Próximo arribo'],
-                ['code' => 'R4', 'status' => 'DISPONIBLE', 'oc' => '—', 'supplier' => 'Ventana abierta', 'slot' => '11:00 – 18:00', 'progress' => 'Sin asignación'],
+                ['code' => 'R1', 'status' => 'EN OPERACIÓN', 'asn' => 'ASN-2026-0103', 'supplier' => 'Copamex Papelero S.A.', 'slot' => '09:00 – 11:00', 'progress' => '28/32 bultos'],
+                ['code' => 'R2', 'status' => 'EN OPERACIÓN', 'asn' => 'ASN-2026-0104', 'supplier' => 'Distribuidora Metropolitana', 'slot' => '10:00 – 12:00', 'progress' => '18/24 bultos'],
+                ['code' => 'R3', 'status' => 'PROGRAMADO', 'asn' => 'ASN-2026-0106', 'supplier' => 'Empaques Olmeca', 'slot' => '12:00 – 13:30', 'progress' => 'Próximo arribo'],
+                ['code' => 'R4', 'status' => 'DISPONIBLE', 'asn' => '—', 'supplier' => 'Ventana abierta', 'slot' => '11:00 – 18:00', 'progress' => 'Sin asignación'],
             ],
             'outbound' => [
                 ['code' => 'E1', 'status' => 'CARGANDO', 'branch' => 'SUC-01 Centro Histórico', 'unit' => 'Tortón #04 · 55-XA-2', 'fill' => '95.2% Peso · 93.9% Vol'],
                 ['code' => 'E2', 'status' => 'CARGANDO', 'branch' => 'SUC-03 Coyoacán', 'unit' => 'Tortón #09 · 71-VR-8', 'fill' => '97.0% Peso · 95.0% Vol'],
                 ['code' => 'E3', 'status' => 'DISPONIBLE', 'branch' => 'Listo para posicionar', 'unit' => 'Andén despejado', 'fill' => 'Esperando liberación ≥90%'],
-            ],
-        ];
-    }
-
-    /**
-     * Órdenes de compra activas para Gerencia/Compras y Portal Proveedor.
-     *
-     * @return list<array<string, mixed>>
-     */
-    public static function purchaseOrders(): array
-    {
-        return [
-            [
-                'oc' => 'OC-2026-0103',
-                'supplier' => 'Alimentos del Golfo S.A. de C.V.',
-                'rfc' => 'AGO880315TR1',
-                'invoice' => 'FAC-AG-77120',
-                'branches' => 'SUC-01, SUC-05, SUC-10',
-                'requested_pieces' => 640,
-                'received_pieces' => 560,
-                'dock_slot' => 'R1 · 09:00–11:00',
-                'status' => 'EN RECEPCIÓN',
-            ],
-            [
-                'oc' => 'OC-2026-0104',
-                'supplier' => 'Distribuidora Metropolitana S.A.',
-                'rfc' => 'DVE940812KM3',
-                'invoice' => 'FAC-DV-98412',
-                'branches' => 'SUC-01, SUC-02, SUC-03',
-                'requested_pieces' => 480,
-                'received_pieces' => 360,
-                'dock_slot' => 'R2 · 10:00–12:00',
-                'status' => 'EN RECEPCIÓN',
-            ],
-            [
-                'oc' => 'OC-2026-0105',
-                'supplier' => 'Distribuidora Metropolitana S.A.',
-                'rfc' => 'DVE940812KM3',
-                'invoice' => 'Pendiente de registro',
-                'branches' => 'SUC-04, SUC-07, SUC-20',
-                'requested_pieces' => 540,
-                'received_pieces' => 0,
-                'dock_slot' => 'Sin agendar',
-                'status' => 'EMITIDA',
-            ],
-            [
-                'oc' => 'OC-2026-0106',
-                'supplier' => 'Empaques y Plásticos Olmeca',
-                'rfc' => 'EPO010522PL9',
-                'invoice' => 'FAC-OL-44019',
-                'branches' => 'SUC-06, SUC-09, SUC-15',
-                'requested_pieces' => 320,
-                'received_pieces' => 0,
-                'dock_slot' => 'R3 · 12:00–13:30',
-                'status' => 'AGENDADA',
-            ],
-            [
-                'oc' => 'OC-2026-0102',
-                'supplier' => 'Abarrotera Nacional del Sureste',
-                'rfc' => 'ANS991104QW2',
-                'invoice' => 'FAC-AN-30218',
-                'branches' => 'SUC-02, SUC-03, SUC-32',
-                'requested_pieces' => 720,
-                'received_pieces' => 720,
-                'dock_slot' => 'R1 · 08:00–09:00',
-                'status' => 'COMPLETA',
             ],
         ];
     }
@@ -207,91 +141,30 @@ final class CedisDemoData
             [
                 'time' => '10:18',
                 'code' => 'INC-2026-041',
-                'type' => 'EXCEDENTE DE PIEZAS',
-                'oc' => 'OC-2026-0104',
+                'type' => 'EXCEDENTE DE CAJAS',
+                'asn' => 'ASN-2026-0104',
                 'package' => 'BLT-0104-025',
-                'detail' => 'SKU-ACE-900 supera las 192 pzas solicitadas para SUC-01. Bulto no recibido.',
+                'detail' => 'PAP-007 supera las cajas declaradas en el Aviso de Entrega (ASN) para SUC-01. Bulto no recibido.',
                 'operator' => 'Juan Pérez Gómez (R2)',
             ],
             [
                 'time' => '09:42',
                 'code' => 'INC-2026-040',
-                'type' => 'SKU NO SOLICITADO',
-                'oc' => 'OC-2026-0103',
+                'type' => 'SKU NO REGISTRADO',
+                'asn' => 'ASN-2026-0103',
                 'package' => 'BLT-0103-019',
-                'detail' => 'Etiqueta declara SKU-JAB-400 ausente en la orden de compra. Rechazado en andén.',
+                'detail' => 'Etiqueta declara SKU ausente en el Aviso de Entrega (ASN) del proveedor. Rechazado en andén.',
                 'operator' => 'Juan Pérez Gómez (R1)',
             ],
             [
                 'time' => '08:35',
                 'code' => 'INC-2026-039',
                 'type' => 'NORMA DE TARIMA',
-                'oc' => 'OC-2026-0102',
+                'asn' => 'ASN-2026-0102',
                 'package' => 'TAR-EXT-09',
                 'detail' => 'Tarima rebasaba 1.85 m (1.94 m medidos). Se reacomodó y emplayó antes de ingreso.',
                 'operator' => 'Ing. Carlos Mendoza',
             ],
-        ];
-    }
-
-    /**
-     * Cotización real en MXN dimensionada para la bodega de 100×40×9 m y operación diaria.
-     *
-     * @return array<string, mixed>
-     */
-    public static function quotation(): array
-    {
-        return [
-            'capex_items' => [
-                [
-                    'category' => 'Infraestructura Wi-Fi Industrial',
-                    'spec' => '6 APs Ubiquiti UniFi U6 Mesh Pro IP67 + Switch Pro 16 PoE + 450m cable Cat6A blindado F/UTP (cobertura 4,000 m² entre racks metálicos de 6 m)',
-                    'qty' => '1 lote (6 APs)',
-                    'unit_mxn' => 68400,
-                    'subtotal_mxn' => 68400,
-                ],
-                [
-                    'category' => 'Terminales Portátiles (Handhelds)',
-                    'spec' => 'Zebra TC22 Android 14 Uso Rudo, Imager 2D QR SE4710, caída 1.5 m MIL-STD-810H, IP67 + cunas de carga (4 recibo, 3 embarque/racks, 1 respaldo)',
-                    'qty' => '8 equipos',
-                    'unit_mxn' => 15850,
-                    'subtotal_mxn' => 126800,
-                ],
-                [
-                    'category' => 'Impresión Láser de Embarques',
-                    'spec' => 'Brother Empresarial HL-L5210DN monocromática 48 ppm, dúplex, Ethernet Gigabit (caseta embarques + respaldo)',
-                    'qty' => '2 equipos',
-                    'unit_mxn' => 6490,
-                    'subtotal_mxn' => 12980,
-                ],
-                [
-                    'category' => 'Servidor Local / Puesta en Marcha',
-                    'spec' => 'Nodo local/nube híbrida, configuración VLAN industrial, montaje a 7.5 m y capacitación a operadores y proveedores',
-                    'qty' => '1 servicio',
-                    'unit_mxn' => 24500,
-                    'subtotal_mxn' => 24500,
-                ],
-            ],
-            'opex_items' => [
-                [
-                    'concept' => 'Papel Bond Carta 75g (95% blancura QR)',
-                    'calculation' => '20 embarques/día × 26 días = 520 embarques/mes × 6 hojas (3 tantos) + reportes = 3,500 hojas (7 paquetes)',
-                    'monthly_mxn' => 826,
-                ],
-                [
-                    'concept' => 'Tóner Alto Rendimiento + Tambor Láser',
-                    'calculation' => 'Brother TN920XL (6,000 págs. a $1,890 MXN → $0.315/pág.) + prorrateo tambor DR para 3,500 págs./mes',
-                    'monthly_mxn' => 1297,
-                ],
-                [
-                    'concept' => 'Conectividad Dedicada y Nube Portal Proveedor',
-                    'calculation' => 'Enlace empresarial simétrico con failover celular + respaldo diario de BD y soporte',
-                    'monthly_mxn' => 4200,
-                ],
-            ],
-            'capex_total_mxn' => 232680,
-            'capex_with_iva_mxn' => 269909,
-            'opex_monthly_mxn' => 6323,
         ];
     }
 }

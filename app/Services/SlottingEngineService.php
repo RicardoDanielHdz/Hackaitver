@@ -20,6 +20,10 @@ class SlottingEngineService
 
     public const float PACKING_EFFICIENCY = 0.89; // 1.95 m³ útil / 2.19 m³ bruto
 
+    public function __construct(
+        private readonly WarehouseSlottingTopologyGuard $topologyGuard = new WarehouseSlottingTopologyGuard,
+    ) {}
+
     /**
      * Calcula el acomodo recomendado (sin modificar la BD) considerando tarimas abiertas,
      * bloqueos Poka-Yoke, segregación líquido/papel, llegadas posteriores programadas y NOM-036.
@@ -232,10 +236,30 @@ class SlottingEngineService
         ?int $userId = null,
         ?string $operatorName = null,
         ?PlannedArrival $plannedArrival = null,
-        bool $autoSlotWhenFull = true
+        bool $autoSlotWhenFull = true,
+        ?string $scannedBultoCode = null,
+        ?string $originSupplier = null,
+        ?string $originDock = null,
+        ?Pallet $forcedTargetPallet = null,
+        bool $auxiliaryEquipmentConfirmed = true
     ): array {
         if ($boxes < 1) {
             throw new InvalidArgumentException('La cantidad de bultos debe ser al menos 1.');
+        }
+
+        // Validaciones previas del Guard Topológico y Normativo (Aislamiento, NOM-036 y Tarima forzada)
+        $this->topologyGuard->assertBranchIsolation($branch, $forcedTargetPallet, $plannedArrival);
+        $this->topologyGuard->assertErgonomicAndMachineryCompliance(
+            $product,
+            $boxes,
+            $distanceBand,
+            $operatorName,
+            $auxiliaryEquipmentConfirmed,
+            ! $auxiliaryEquipmentConfirmed
+        );
+
+        if ($forcedTargetPallet !== null) {
+            $this->validateForcedPalletPlacement($forcedTargetPallet, $product, $boxes);
         }
 
         return DB::transaction(function () use (
@@ -246,7 +270,11 @@ class SlottingEngineService
             $userId,
             $operatorName,
             $plannedArrival,
-            $autoSlotWhenFull
+            $autoSlotWhenFull,
+            $scannedBultoCode,
+            $originSupplier,
+            $originDock,
+            $forcedTargetPallet
         ): array {
             $lookahead = $this->analyzePendingArrivals($branch, $product, $plannedArrival?->id);
             $boxesPerLayer = $product->boxesPerLayer();
@@ -258,7 +286,14 @@ class SlottingEngineService
 
             while ($remainingBoxes > 0) {
                 $openPallets = $this->loadOpenPalletsState($branch);
-                $selectedIndex = $this->selectBestOpenPalletIndex($openPallets, $product, $lookahead);
+                if ($forcedTargetPallet !== null) {
+                    $selectedIndex = collect($openPallets)->search(
+                        static fn (array $p): bool => (int) $p['id'] === (int) $forcedTargetPallet->id
+                    );
+                    $selectedIndex = $selectedIndex === false ? null : (int) $selectedIndex;
+                } else {
+                    $selectedIndex = $this->selectBestOpenPalletIndex($openPallets, $product, $lookahead);
+                }
                 $isNewPallet = false;
 
                 if ($selectedIndex === null) {
@@ -339,20 +374,25 @@ class SlottingEngineService
                     $palletState
                 );
 
-                PalletItem::create([
-                    'pallet_id' => $pallet->id,
-                    'product_id' => $product->id,
-                    'batch_code' => $batchPrefix,
-                    'quantity_boxes' => $placedNow,
-                    'assigned_zone_priority' => $product->zone_priority,
-                    'layer_index' => $layerIndex,
-                    'total_weight_kg' => $addedWeight,
-                    'total_volume_m3' => $addedVolume,
-                    'orientation_instruction' => $product->orientation_rule,
-                    'placement_reason' => $reason,
-                    'ergonomic_warning' => $product->ergonomicAlertMessage(),
-                    'placed_by_user_id' => $userId,
-                ]);
+                // Verificación final del Guard Topológico antes de persistir cambios en la tarima
+                $this->topologyGuard->assertPalletMaterialSegregation(
+                    (string) $palletState['code'],
+                    (bool) $pallet->has_liquids,
+                    (bool) $pallet->has_hygroscopic,
+                    $product
+                );
+                $this->topologyGuard->assertVerticalStackingIntegrity(
+                    (string) $palletState['code'],
+                    (int) $pallet->highest_zone_priority,
+                    $product,
+                    $newSkuBoxes
+                );
+                $this->topologyGuard->assertPalletPhysicalLimits(
+                    (string) $palletState['code'],
+                    (float) $palletState['total_weight_kg'],
+                    (float) $palletState['volume_m3'],
+                    (float) $palletState['estimated_height_m']
+                );
 
                 $pallet->update([
                     'goods_weight_kg' => $palletState['goods_weight_kg'],
@@ -371,12 +411,72 @@ class SlottingEngineService
                     $slottedResult = $this->slotPalletIntoRack($pallet->fresh());
                 }
 
+                // Coordenada exacta (real si ya subió a rack, o proyectada para la etiqueta láser interna)
+                if ($slottedResult !== null) {
+                    $plannedCoordinate = $slottedResult['coordinate'];
+                    $waveNum = (int) $slottedResult['wave_number'];
+                } else {
+                    $currentSlotted = $branch->pallets()
+                        ->where('status', 'slotted')
+                        ->get()
+                        ->map(static fn (Pallet $p): array => [
+                            'level' => (int) $p->rack_level,
+                            'position' => (int) $p->rack_position,
+                            'has_liquids' => (bool) $p->has_liquids,
+                            'has_hygroscopic' => (bool) $p->has_hygroscopic,
+                            'wave_number' => (int) $p->wave_number,
+                        ])->values()->all();
+                    $preview = $this->findOptimalRackSlotFromArray(
+                        $currentSlotted,
+                        $palletState['total_weight_kg'],
+                        $palletState['has_liquids'],
+                        $palletState['has_hygroscopic'],
+                        $palletState['pallet_profile']
+                    );
+                    $plannedCoordinate = $preview['available']
+                        ? sprintf('%s · N%d·P%d', $branch->rack_code, $preview['level'], $preview['position'])
+                        : ($branch->rack_code.' · EN PISO');
+                    $waveNum = (int) $preview['wave_number'];
+                }
+
+                $outboundDock = $branch->number <= 11 ? 'E1' : ($branch->number <= 22 ? 'E2' : 'E3');
+                $outboundTarget = sprintf('ANDÉN %s · OLA %d TORTÓN', $outboundDock, $waveNum);
+                $outboundCutoff = $waveNum === 1 ? 'SALIDA PRÓXIMO CORTE (≥90%)' : 'SEGUNDO CORTE PROGRAMADO';
+                $resolvedSupplier = $originSupplier ?: ($plannedArrival?->supplier_name ?? 'Proveedor Autorizado CEDIS');
+                $resolvedDock = $originDock ?: ($plannedArrival?->dock_code ?? 'R2');
+                $internalLabelCode = sprintf('LSR-%02d-%04d', $branch->number, ((int) PalletItem::query()->max('id')) + 1);
+
+                $createdItem = PalletItem::create([
+                    'pallet_id' => $pallet->id,
+                    'product_id' => $product->id,
+                    'batch_code' => $batchPrefix,
+                    'internal_label_code' => $internalLabelCode,
+                    'scanned_bulto_code' => $scannedBultoCode,
+                    'quantity_boxes' => $placedNow,
+                    'assigned_zone_priority' => $product->zone_priority,
+                    'layer_index' => $layerIndex,
+                    'total_weight_kg' => $addedWeight,
+                    'total_volume_m3' => $addedVolume,
+                    'orientation_instruction' => $product->orientation_rule,
+                    'placement_reason' => $reason,
+                    'ergonomic_warning' => $product->ergonomicAlertMessage(),
+                    'origin_supplier' => $resolvedSupplier,
+                    'origin_dock' => $resolvedDock,
+                    'planned_rack_coordinate' => $plannedCoordinate,
+                    'outbound_dock_target' => $outboundTarget,
+                    'outbound_cutoff' => $outboundCutoff,
+                    'placed_by_user_id' => $userId,
+                ]);
+
                 $executedAllocations[] = [
+                    'pallet_item_id' => $createdItem->id,
+                    'internal_label_code' => $internalLabelCode,
                     'pallet_id' => $pallet->id,
                     'pallet_code' => $pallet->code,
                     'is_new_pallet' => $isNewPallet,
                     'boxes_placed' => $placedNow,
                     'assigned_zone' => $product->stow_zone,
+                    'zone_priority' => $product->zone_priority,
                     'layer_index' => $layerIndex,
                     'added_weight_kg' => $addedWeight,
                     'added_volume_m3' => $addedVolume,
@@ -384,6 +484,12 @@ class SlottingEngineService
                     'pallet_volume_m3' => $palletState['volume_m3'],
                     'pallet_height_m' => $palletState['estimated_height_m'],
                     'placement_reason' => $reason,
+                    'planned_rack_coordinate' => $plannedCoordinate,
+                    'origin_supplier' => $resolvedSupplier,
+                    'origin_dock' => $resolvedDock,
+                    'origin_folio' => $batchPrefix,
+                    'outbound_dock_target' => $outboundTarget,
+                    'outbound_cutoff' => $outboundCutoff,
                     'auto_slotted' => $slottedResult !== null,
                     'rack_assignment' => $slottedResult,
                 ];
@@ -510,13 +616,33 @@ class SlottingEngineService
     }
 
     /**
-     * Cierra una tarima en armado y la ubica en la posición óptima del Rack 4×8 de la sucursal.
+     * Cierra una tarima en armado y la ubica en la posición óptima (o explícita validada) del Rack 4×8 de la sucursal.
      *
      * @return array<string, mixed>
      */
-    public function slotPalletIntoRack(Pallet $pallet): array
-    {
-        if ($pallet->status === 'slotted' && $pallet->rack_level !== null && $pallet->rack_position !== null) {
+    public function slotPalletIntoRack(
+        Pallet $pallet,
+        ?int $explicitLevel = null,
+        ?int $explicitPosition = null,
+        ?Branch $explicitBranch = null,
+        bool $machineryConfirmed = true
+    ): array {
+        $branch = $explicitBranch ?? $pallet->branch;
+        $this->topologyGuard->assertBranchIsolation($branch, $pallet);
+        $this->topologyGuard->assertPalletPhysicalLimits(
+            $pallet->code,
+            (float) $pallet->total_weight_kg,
+            (float) $pallet->volume_m3,
+            (float) $pallet->estimated_height_m
+        );
+
+        if (
+            $explicitLevel === null
+            && $explicitPosition === null
+            && $pallet->status === 'slotted'
+            && $pallet->rack_level !== null
+            && $pallet->rack_position !== null
+        ) {
             return [
                 'available' => true,
                 'pallet_code' => $pallet->code,
@@ -528,7 +654,6 @@ class SlottingEngineService
             ];
         }
 
-        $branch = $pallet->branch;
         $slotted = $branch->pallets()
             ->where('status', 'slotted')
             ->where('id', '!=', $pallet->id)
@@ -543,16 +668,72 @@ class SlottingEngineService
             ->values()
             ->all();
 
-        $slot = $this->findOptimalRackSlotFromArray(
-            $slotted,
-            (float) $pallet->total_weight_kg,
-            (bool) $pallet->has_liquids,
-            (bool) $pallet->has_hygroscopic,
-            $pallet->pallet_profile
-        );
+        $occupiedGrid = [];
+        $wave1Count = 0;
+        foreach ($slotted as $sp) {
+            $occupiedGrid[$sp['level']][$sp['position']] = $sp;
+            if ($sp['wave_number'] === 1) {
+                $wave1Count++;
+            }
+        }
 
-        if (! $slot['available']) {
-            throw new InvalidArgumentException("El {$branch->rack_code} ya tiene las 32 posiciones ocupadas; despacha una Orden de Salida para liberar espacio.");
+        if ($explicitLevel !== null || $explicitPosition !== null) {
+            $targetLevel = (int) ($explicitLevel ?? 1);
+            $targetPos = (int) ($explicitPosition ?? 1);
+
+            $this->topologyGuard->assertRackCoordinateTopology(
+                $branch,
+                $pallet,
+                $targetLevel,
+                $targetPos,
+                $occupiedGrid,
+                count($slotted)
+            );
+            $this->topologyGuard->assertRackColumnSegregation(
+                $branch,
+                $pallet,
+                $targetLevel,
+                $targetPos,
+                $occupiedGrid
+            );
+            $this->topologyGuard->assertRackMachineryCompliance($pallet, $targetLevel, $machineryConfirmed);
+
+            $slot = [
+                'available' => true,
+                'level' => $targetLevel,
+                'position' => $targetPos,
+                'wave_number' => $wave1Count < 12 ? 1 : 2,
+                'reason' => sprintf('Ubicación validada por WarehouseSlottingTopologyGuard en %s · N%d·P%d.', $branch->rack_code, $targetLevel, $targetPos),
+            ];
+        } else {
+            $slot = $this->findOptimalRackSlotFromArray(
+                $slotted,
+                (float) $pallet->total_weight_kg,
+                (bool) $pallet->has_liquids,
+                (bool) $pallet->has_hygroscopic,
+                $pallet->pallet_profile
+            );
+
+            if (! $slot['available']) {
+                throw new InvalidArgumentException("El {$branch->rack_code} ya tiene las 32 posiciones ocupadas; despacha una Orden de Salida para liberar espacio.");
+            }
+
+            $this->topologyGuard->assertRackCoordinateTopology(
+                $branch,
+                $pallet,
+                (int) $slot['level'],
+                (int) $slot['position'],
+                $occupiedGrid,
+                count($slotted)
+            );
+            $this->topologyGuard->assertRackColumnSegregation(
+                $branch,
+                $pallet,
+                (int) $slot['level'],
+                (int) $slot['position'],
+                $occupiedGrid
+            );
+            $this->topologyGuard->assertRackMachineryCompliance($pallet, (int) $slot['level'], $machineryConfirmed);
         }
 
         $pallet->update([
@@ -573,6 +754,46 @@ class SlottingEngineService
             'wave_number' => $slot['wave_number'],
             'reason' => $slot['reason'],
         ];
+    }
+
+    /**
+     * Valida una asignación forzada sobre una tarima específica antes de procesarla.
+     */
+    private function validateForcedPalletPlacement(Pallet $pallet, Product $product, int $boxes): void
+    {
+        $pallet->loadMissing('items');
+
+        $existingSkuBoxes = (int) $pallet->items
+            ->where('product_id', $product->id)
+            ->sum('quantity_boxes');
+        $projectedSkuBoxes = $existingSkuBoxes + $boxes;
+
+        $projectedGoodsWeight = round((float) $pallet->goods_weight_kg + ($boxes * (float) $product->master_weight_kg), 2);
+        $projectedTotalWeight = round(Pallet::WOOD_TARE_KG + $projectedGoodsWeight, 2);
+        $projectedVolume = round((float) $pallet->volume_m3 + ($boxes * (float) $product->master_volume_m3), 4);
+        $projectedHeight = round(
+            Pallet::WOOD_HEIGHT_M + (($projectedVolume / self::PACKING_EFFICIENCY) / self::PALLET_FOOTPRINT_AREA_M2),
+            2
+        );
+
+        $this->topologyGuard->assertPalletMaterialSegregation(
+            $pallet->code,
+            (bool) $pallet->has_liquids,
+            (bool) $pallet->has_hygroscopic,
+            $product
+        );
+        $this->topologyGuard->assertVerticalStackingIntegrity(
+            $pallet->code,
+            (int) $pallet->highest_zone_priority,
+            $product,
+            $projectedSkuBoxes
+        );
+        $this->topologyGuard->assertPalletPhysicalLimits(
+            $pallet->code,
+            $projectedTotalWeight,
+            $projectedVolume,
+            $projectedHeight
+        );
     }
 
     /**

@@ -123,8 +123,12 @@ class OutboundOrderService
             $userId,
             $plan
         ): OutboundOrder {
-            $nextNumber = OutboundOrder::query()->count() + 1;
+            $nextNumber = ((int) OutboundOrder::query()->max('id')) + 1;
             $folio = sprintf('SAL-2026-%03d', $nextNumber);
+            while (OutboundOrder::query()->where('folio', $folio)->exists()) {
+                $nextNumber++;
+                $folio = sprintf('SAL-2026-%03d', $nextNumber);
+            }
 
             $order = OutboundOrder::create([
                 'folio' => $folio,

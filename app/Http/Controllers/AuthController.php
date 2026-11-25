@@ -21,9 +21,7 @@ class AuthController extends Controller
             return redirect($user->getDashboardRoute());
         }
 
-        $demoUsers = User::orderBy('id')->get();
-
-        return view('auth.login', compact('demoUsers'));
+        return view('auth.login');
     }
 
     public function login(Request $request): RedirectResponse
@@ -33,43 +31,31 @@ class AuthController extends Controller
             'password' => ['required', 'string'],
         ]);
 
-        $remember = $request->boolean('remember', true);
+        $remember = $request->boolean('remember', false);
 
         if (Auth::attempt($credentials, $remember)) {
-            $request->session()->regenerate();
-
             /** @var User $user */
             $user = Auth::user();
 
-            return redirect()->intended($user->getDashboardRoute())
-                ->with('status', 'Sesión activa: '.$user->name.' · '.$user->job_title);
+            if (! $user->is_active) {
+                Auth::logout();
+                $request->session()->invalidate();
+                $request->session()->regenerateToken();
+
+                return back()->withErrors([
+                    'email' => 'Esta cuenta se encuentra suspendida. Contacte a la Gerencia General del CEDIS.',
+                ])->onlyInput('email');
+            }
+
+            $request->session()->regenerate();
+
+            return redirect($user->getDashboardRoute())
+                ->with('status', 'Sesión iniciada: '.$user->name.' · '.$user->job_title);
         }
 
         return back()->withErrors([
-            'email' => 'Credenciales inválidas. Verifique su correo corporativo y contraseña.',
+            'email' => 'Credenciales inválidas. Verifique su correo corporativo y contraseña asignada.',
         ])->onlyInput('email');
-    }
-
-    public function quickLogin(string $role): RedirectResponse
-    {
-        $targetRole = $role === 'operador_acomodo' ? 'operador' : $role;
-        $user = User::where('role', $targetRole)->first();
-
-        if ($user !== null) {
-            Auth::login($user);
-            request()->session()->regenerate();
-
-            $redirectUrl = $role === 'operador_acomodo'
-                ? route('wms.index')
-                : $user->getDashboardRoute();
-
-            return redirect($redirectUrl)
-                ->with('status', 'Cambio de vista activo: '.$user->name.' ('.$user->job_title.')');
-        }
-
-        return redirect()->route('login')->withErrors([
-            'email' => 'El perfil solicitado no se encuentra registrado.',
-        ]);
     }
 
     public function logout(Request $request): RedirectResponse
@@ -79,6 +65,6 @@ class AuthController extends Controller
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        return redirect()->route('login')->with('status', 'Sesión finalizada correctamente.');
+        return redirect()->route('login')->with('status', 'Sesión cerrada correctamente. Ingrese nuevas credenciales para cambiar de perfil.');
     }
 }

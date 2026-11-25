@@ -8,10 +8,12 @@ use App\Models\Branch;
 use App\Models\OperatorErgonomicLog;
 use App\Models\OutboundOrder;
 use App\Models\Pallet;
+use App\Models\PalletItem;
 use App\Models\PlannedArrival;
 use App\Models\Product;
 use App\Services\OutboundOrderService;
 use App\Services\SlottingEngineService;
+use chillerlan\QRCode\Common\EccLevel;
 use chillerlan\QRCode\Output\QRMarkupSVG;
 use chillerlan\QRCode\QRCode;
 use chillerlan\QRCode\QROptions;
@@ -102,12 +104,17 @@ class SlottingController extends Controller
             'distance_band' => ['nullable', 'in:under_10m,10_to_20m'],
             'planned_arrival_id' => ['nullable', 'integer', 'exists:planned_arrivals,id'],
             'auto_slot_when_full' => ['nullable', 'boolean'],
+            'target_pallet_id' => ['nullable', 'integer', 'exists:pallets,id'],
+            'auxiliary_equipment_confirmed' => ['nullable', 'boolean'],
         ]);
 
         $branch = Branch::query()->findOrFail($validated['branch_id']);
         $product = Product::query()->findOrFail($validated['product_id']);
         $arrival = isset($validated['planned_arrival_id'])
             ? PlannedArrival::query()->find($validated['planned_arrival_id'])
+            : null;
+        $targetPallet = isset($validated['target_pallet_id'])
+            ? Pallet::query()->find($validated['target_pallet_id'])
             : null;
 
         try {
@@ -119,7 +126,12 @@ class SlottingController extends Controller
                 Auth::id(),
                 Auth::user()?->name ?? 'Juan Pérez Gómez',
                 $arrival,
-                (bool) ($validated['auto_slot_when_full'] ?? true)
+                (bool) ($validated['auto_slot_when_full'] ?? true),
+                null,
+                null,
+                null,
+                $targetPallet,
+                (bool) ($validated['auxiliary_equipment_confirmed'] ?? true)
             );
         } catch (InvalidArgumentException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
@@ -163,10 +175,27 @@ class SlottingController extends Controller
         ]);
     }
 
-    public function slotPallet(Pallet $pallet): JsonResponse
+    public function slotPallet(Request $request, Pallet $pallet): JsonResponse
     {
+        $validated = $request->validate([
+            'target_level' => ['nullable', 'integer'],
+            'target_position' => ['nullable', 'integer'],
+            'target_branch_id' => ['nullable', 'integer', 'exists:branches,id'],
+            'machinery_confirmed' => ['nullable', 'boolean'],
+        ]);
+
+        $explicitBranch = isset($validated['target_branch_id'])
+            ? Branch::query()->findOrFail((int) $validated['target_branch_id'])
+            : null;
+
         try {
-            $assignment = $this->slottingEngine->slotPalletIntoRack($pallet);
+            $assignment = $this->slottingEngine->slotPalletIntoRack(
+                $pallet,
+                isset($validated['target_level']) ? (int) $validated['target_level'] : null,
+                isset($validated['target_position']) ? (int) $validated['target_position'] : null,
+                $explicitBranch,
+                (bool) ($validated['machinery_confirmed'] ?? true)
+            );
         } catch (InvalidArgumentException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
@@ -193,7 +222,7 @@ class SlottingController extends Controller
         ]);
 
         $branch = Branch::query()->findOrFail($validated['branch_id']);
-        $nextSeq = PlannedArrival::query()->count() + 1;
+        $nextSeq = ((int) PlannedArrival::query()->max('id')) + 1;
 
         $arrival = PlannedArrival::create([
             'folio' => sprintf('ARR-2026-%03d', $nextSeq),
@@ -257,139 +286,335 @@ class SlottingController extends Controller
     {
         $outboundOrder->load(['branch', 'pallets.items.product', 'createdBy']);
 
+        $skuGroups = [];
+        $totalBoxes = 0;
+        $totalPieces = 0;
+        $hasLiquids = false;
+        $hasHygroscopic = false;
+        $suppliers = [];
+
+        foreach ($outboundOrder->pallets as $pallet) {
+            foreach ($pallet->items as $item) {
+                $product = $item->product;
+                if ($product === null) {
+                    continue;
+                }
+                $sku = $product->sku;
+                $boxes = (int) $item->quantity_boxes;
+                $pieces = $boxes * (int) $product->master_factor;
+                $totalBoxes += $boxes;
+                $totalPieces += $pieces;
+                $hasLiquids = $hasLiquids || (bool) $product->is_liquid;
+                $hasHygroscopic = $hasHygroscopic || (bool) $product->is_hygroscopic;
+
+                $supplierName = $item->origin_supplier ?: 'Proveedor Autorizado CDMX';
+                $suppliers[$supplierName] = true;
+
+                if (! isset($skuGroups[$sku])) {
+                    $skuGroups[$sku] = [
+                        'sku' => $sku,
+                        'name' => $product->name,
+                        'category' => $product->category,
+                        'stow_zone' => $product->stow_zone,
+                        'zone_priority' => $product->zone_priority,
+                        'orientation_rule' => $product->orientation_rule,
+                        'is_liquid' => (bool) $product->is_liquid,
+                        'is_hygroscopic' => (bool) $product->is_hygroscopic,
+                        'boxes' => 0,
+                        'pieces' => 0,
+                        'weight_kg' => 0.0,
+                        'volume_m3' => 0.0,
+                        'pallets' => [],
+                        'suppliers' => [],
+                    ];
+                }
+
+                $skuGroups[$sku]['boxes'] += $boxes;
+                $skuGroups[$sku]['pieces'] += $pieces;
+                $skuGroups[$sku]['weight_kg'] = round($skuGroups[$sku]['weight_kg'] + (float) $item->total_weight_kg, 2);
+                $skuGroups[$sku]['volume_m3'] = round($skuGroups[$sku]['volume_m3'] + (float) $item->total_volume_m3, 3);
+                $skuGroups[$sku]['pallets'][$pallet->code] = true;
+                $skuGroups[$sku]['suppliers'][$supplierName] = true;
+            }
+        }
+
+        $skuSummary = collect($skuGroups)
+            ->sortBy([['zone_priority', 'asc'], ['weight_kg', 'desc']])
+            ->map(static function (array $row): array {
+                $row['pallets_list'] = implode(', ', array_keys($row['pallets']));
+                $row['suppliers_list'] = implode(', ', array_keys($row['suppliers']));
+                unset($row['pallets'], $row['suppliers']);
+
+                return $row;
+            })
+            ->values();
+
+        $sealCode = sprintf('MCH-%s-%04d', $outboundOrder->branch->code, $outboundOrder->id);
+
+        $totals = [
+            'seal_code' => $sealCode,
+            'total_boxes' => $totalBoxes,
+            'total_pieces' => $totalPieces,
+            'distinct_skus' => $skuSummary->count(),
+            'has_liquids' => $hasLiquids,
+            'has_hygroscopic' => $hasHygroscopic,
+            'suppliers_list' => implode(' · ', array_keys($suppliers)),
+        ];
+
         $payload = json_encode([
             'folio' => $outboundOrder->folio,
+            'marchamo' => $sealCode,
             'sucursal' => $outboundOrder->branch->code,
+            'destino' => $outboundOrder->branch->name,
             'anden' => $outboundOrder->dock_code,
             'placas' => $outboundOrder->unit_plate,
             'tarimas' => $outboundOrder->pallet_count,
+            'cajas' => $totalBoxes,
+            'piezas' => $totalPieces,
+            'skus' => $skuSummary->count(),
             'peso_kg' => $outboundOrder->total_weight_kg,
             'volumen_m3' => $outboundOrder->total_volume_m3,
+            'liquidos' => $hasLiquids,
+            'contenido' => $skuSummary->take(8)->map(static fn (array $r): string => $r['sku'].':'.$r['boxes'].'cja')->all(),
         ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
 
-        $qrSvgDataUri = (new QRCode(new QROptions([
+        $qrOptions = new QROptions([
             'outputInterface' => QRMarkupSVG::class,
             'outputBase64' => true,
-            'scale' => 6,
-            'quietzoneSize' => 2,
-        ])))->render($payload);
+            'eccLevel' => EccLevel::L,
+            'scale' => 7,
+            'quietzoneSize' => 4,
+        ]);
+
+        $qrSvgDataUri = (new QRCode($qrOptions))->render($payload);
 
         return view('wms.manifest', [
             'order' => $outboundOrder,
             'qrSvgDataUri' => $qrSvgDataUri,
+            'skuSummary' => $skuSummary,
+            'totals' => $totals,
         ]);
     }
 
     /**
-     * Genera etiqueta(s) QR industrial(es) para bultos de cualquiera de los 72 SKUs o de una llegada programada.
+     * Genera la Etiqueta Principal del Conjunto + 1 Etiqueta Individual por cada Caja
+     * para envíos de proveedor (uno o varios artículos) o consulta directa de SKU.
      */
     public function productQrLabel(Request $request): View
     {
+        $arrivalIdsParam = trim((string) $request->query('arrival_ids', ''));
         $arrivalId = $request->query('arrival_id');
-        if ($arrivalId !== null) {
-            $arrival = PlannedArrival::query()->with(['branch', 'product'])->findOrFail((int) $arrivalId);
-            $branch = $arrival->branch;
-            $product = $arrival->product;
-            $boxes = max(1, $arrival->pendingBoxes());
-            $folio = $arrival->folio;
-            $dock = $arrival->dock_code;
-            $supplier = $arrival->supplier_name;
-        } else {
+        $entries = [];
+
+        if ($arrivalIdsParam !== '') {
+            $ids = array_values(array_filter(array_map('intval', explode(',', $arrivalIdsParam))));
+            $arrivals = PlannedArrival::query()->with(['branch', 'product'])->whereIn('id', $ids)->orderBy('id')->get();
+            foreach ($arrivals as $arr) {
+                $entries[] = [
+                    'arrival_id' => $arr->id,
+                    'branch' => $arr->branch,
+                    'product' => $arr->product,
+                    'boxes' => max(1, $arr->pendingBoxes()),
+                    'folio' => $arr->folio,
+                    'dock' => $arr->dock_code,
+                    'eta_window' => $arr->eta_window,
+                    'supplier' => $arr->supplier_name,
+                ];
+            }
+        } elseif ($arrivalId !== null) {
+            $arr = PlannedArrival::query()->with(['branch', 'product'])->findOrFail((int) $arrivalId);
+            $entries[] = [
+                'arrival_id' => $arr->id,
+                'branch' => $arr->branch,
+                'product' => $arr->product,
+                'boxes' => max(1, $arr->pendingBoxes()),
+                'folio' => $arr->folio,
+                'dock' => $arr->dock_code,
+                'eta_window' => $arr->eta_window,
+                'supplier' => $arr->supplier_name,
+            ];
+        }
+
+        if ($entries === []) {
             $branch = Branch::query()->findOrFail((int) $request->query('branch_id', 1));
             $product = Product::query()->findOrFail((int) $request->query('product_id', 1));
-            $boxes = max(1, min(100, (int) $request->query('boxes', 1)));
-            $folio = 'ETQ-'.now()->format('His');
-            $dock = 'R2';
-            $supplier = 'Proveedor Papelero Autorizado CDMX';
+            $entries[] = [
+                'arrival_id' => null,
+                'branch' => $branch,
+                'product' => $product,
+                'boxes' => max(1, min(100, (int) $request->query('boxes', 1))),
+                'folio' => 'ETQ-'.now()->format('His'),
+                'dock' => 'R2',
+                'eta_window' => 'Programado hoy',
+                'supplier' => 'Proveedor Papelero Autorizado CDMX',
+            ];
         }
 
         $qrOptions = new QROptions([
             'outputInterface' => QRMarkupSVG::class,
             'outputBase64' => true,
-            'scale' => 6,
-            'quietzoneSize' => 2,
+            'eccLevel' => EccLevel::L,
+            'scale' => 7,
+            'quietzoneSize' => 4,
         ]);
 
-        // Generamos etiqueta maestra del lote + etiquetas individuales (máx 12 en vista previa imprimible)
-        $labels = [];
-        $previewCount = min($boxes, 12);
+        $totalBoxes = array_sum(array_column($entries, 'boxes'));
+        $totalPieces = 0;
+        $totalWeightKg = 0.0;
+        $destinations = [];
+        $summaryRows = [];
 
-        for ($i = 1; $i <= $previewCount; $i++) {
-            $bultoCode = sprintf('BLT-%s-%s-%02d', $branch->code, $product->sku, $i);
-            $payloadArray = [
-                'bulto' => $bultoCode,
-                'folio' => $folio,
-                'destino' => $branch->code,
-                'sku' => $product->sku,
-                'cajas' => 1,
-                'piezas' => $product->master_factor,
-                'peso_kg' => $product->master_weight_kg,
-                'zona' => $product->stow_zone,
-            ];
-            $payloadJson = json_encode($payloadArray, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        foreach ($entries as $entry) {
+            $pieces = $entry['boxes'] * (int) $entry['product']->master_factor;
+            $weight = round($entry['boxes'] * (float) $entry['product']->master_weight_kg, 2);
+            $totalPieces += $pieces;
+            $totalWeightKg = round($totalWeightKg + $weight, 2);
+            $destinations[$entry['branch']->code.' · '.$entry['branch']->name] = true;
 
-            $labels[] = [
-                'index' => $i,
-                'total' => $boxes,
-                'bulto_code' => $bultoCode,
-                'payload_json' => $payloadJson,
-                'qr_data_uri' => (new QRCode($qrOptions))->render($payloadJson),
+            $summaryRows[] = [
+                'sku' => $entry['product']->sku,
+                'name' => $entry['product']->name,
+                'branch_code' => $entry['branch']->code,
+                'branch_name' => $entry['branch']->name,
+                'rack_code' => $entry['branch']->rack_code,
+                'stow_zone' => $entry['product']->stow_zone,
+                'boxes' => $entry['boxes'],
+                'pieces' => $pieces,
+                'weight_kg' => $weight,
             ];
         }
 
+        $showAllBoxes = $request->boolean('all_boxes', false);
+        $boxLimit = $showAllBoxes ? max(1, $totalBoxes) : min($totalBoxes, 80);
+
+        $labels = [];
+        $globalIndex = 0;
+        foreach ($entries as $entry) {
+            $branch = $entry['branch'];
+            $product = $entry['product'];
+            $prefix = $entry['arrival_id'] !== null ? ('ARR'.$entry['arrival_id']) : $branch->code;
+
+            for ($i = 1; $i <= $entry['boxes']; $i++) {
+                $globalIndex++;
+                if ($globalIndex > $boxLimit) {
+                    break 2;
+                }
+                $bultoCode = sprintf('BLT-%s-%s-%02d', $prefix, $product->sku, $i);
+                $payloadArray = [
+                    'bulto' => $bultoCode,
+                    'arrival_id' => $entry['arrival_id'],
+                    'folio' => $entry['folio'],
+                    'proveedor' => $entry['supplier'],
+                    'anden_entrada' => $entry['dock'],
+                    'destino' => $branch->code,
+                    'sku' => $product->sku,
+                    'cajas' => 1,
+                    'piezas' => $product->master_factor,
+                    'peso_kg' => $product->master_weight_kg,
+                    'zona' => $product->stow_zone,
+                ];
+                $payloadJson = json_encode($payloadArray, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+
+                $labels[] = [
+                    'index' => $globalIndex,
+                    'total' => $totalBoxes,
+                    'item_box_index' => $i,
+                    'item_box_total' => $entry['boxes'],
+                    'bulto_code' => $bultoCode,
+                    'sku' => $product->sku,
+                    'product_name' => $product->name,
+                    'stow_zone' => $product->stow_zone,
+                    'master_weight_kg' => $product->master_weight_kg,
+                    'master_factor' => $product->master_factor,
+                    'orientation_rule' => $product->orientation_rule,
+                    'branch_code' => $branch->code,
+                    'branch_name' => $branch->name,
+                    'rack_code' => $branch->rack_code,
+                    'dock' => $entry['dock'],
+                    'supplier' => $entry['supplier'],
+                    'payload_json' => $payloadJson,
+                    'qr_data_uri' => (new QRCode($qrOptions))->render($payloadJson),
+                ];
+            }
+        }
+
+        $first = $entries[0];
         $batchPayload = json_encode([
-            'bulto' => sprintf('LOTE-%s-%s', $branch->code, $product->sku),
-            'folio' => $folio,
-            'destino' => $branch->code,
-            'sku' => $product->sku,
-            'cajas' => $boxes,
-            'piezas' => $boxes * $product->master_factor,
-            'peso_kg' => round($boxes * $product->master_weight_kg, 2),
-            'zona' => $product->stow_zone,
+            'bulto' => count($entries) > 1
+                ? ('CONJUNTO-'.preg_replace('/[^A-Z0-9\-]/', '', strtoupper($first['folio'])))
+                : sprintf('LOTE-%s-%s', $first['arrival_id'] !== null ? ('ARR'.$first['arrival_id']) : $first['branch']->code, $first['product']->sku),
+            'arrival_id' => count($entries) === 1 ? $first['arrival_id'] : null,
+            'folio' => $first['folio'],
+            'proveedor' => $first['supplier'],
+            'anden_entrada' => $first['dock'],
+            'destino' => $first['branch']->code,
+            'sku' => $first['product']->sku,
+            'skus_totales' => count($entries),
+            'cajas' => $totalBoxes,
+            'piezas' => $totalPieces,
+            'peso_kg' => $totalWeightKg,
         ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
 
         $batchQrDataUri = (new QRCode($qrOptions))->render($batchPayload);
 
         return view('wms.qr-label', [
-            'branch' => $branch,
-            'product' => $product,
-            'boxes' => $boxes,
-            'folio' => $folio,
-            'dock' => $dock,
-            'supplier' => $supplier,
+            'branch' => $first['branch'],
+            'product' => $first['product'],
+            'boxes' => $totalBoxes,
+            'totalPieces' => $totalPieces,
+            'totalWeightKg' => $totalWeightKg,
+            'destinations' => array_keys($destinations),
+            'summaryRows' => $summaryRows,
+            'folio' => $first['folio'],
+            'dock' => $first['dock'],
+            'etaWindow' => $first['eta_window'],
+            'supplier' => $first['supplier'],
             'batchPayload' => $batchPayload,
             'batchQrDataUri' => $batchQrDataUri,
             'labels' => $labels,
+            'hasMoreBoxes' => $totalBoxes > count($labels),
         ]);
     }
 
     /**
-     * Procesa el escaneo o lectura de un QR de bulto/lote, valida el SKU contra el catálogo real de 72 productos
-     * y registra su almacenamiento en tarima y rack dentro del CEDIS CDMX.
+     * Procesa el escaneo de la etiqueta integrada enviada por el proveedor, comprueba contra lo programado,
+     * acomoda el artículo y genera automáticamente la SEGUNDA etiqueta láser continua del operador
+     * indicando DÓNDE ACOMODAR, LUGAR DE ORIGEN y LUGAR DE SALIDA.
      */
     public function scanQr(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'qr_payload' => ['required', 'string'],
             'distance_band' => ['nullable', 'in:under_10m,10_to_20m'],
+            'auxiliary_equipment_confirmed' => ['nullable', 'boolean'],
         ]);
 
         $decoded = json_decode($validated['qr_payload'], true);
         if (! is_array($decoded)) {
             return response()->json([
-                'message' => 'El código QR no contiene un JSON válido del estándar CEDIS CDMX.',
+                'message' => 'El código QR no contiene una etiqueta integrada válida del estándar CEDIS CDMX.',
             ], 422);
         }
 
+        $bultoCode = trim((string) ($decoded['bulto'] ?? ''));
         $sku = trim((string) ($decoded['sku'] ?? ''));
         $branchCode = trim((string) ($decoded['destino'] ?? $decoded['sucursal'] ?? ''));
         $boxes = max(1, (int) ($decoded['cajas'] ?? 1));
-        $folio = trim((string) ($decoded['folio'] ?? $decoded['oc'] ?? ''));
+        $folio = trim((string) ($decoded['folio'] ?? $decoded['asn'] ?? ''));
+        $arrivalId = isset($decoded['arrival_id']) ? (int) $decoded['arrival_id'] : null;
+        $originSupplier = trim((string) ($decoded['proveedor'] ?? ''));
+        $originDock = trim((string) ($decoded['anden_entrada'] ?? ''));
+
+        if ($bultoCode !== '' && PalletItem::query()->where('scanned_bulto_code', $bultoCode)->exists()) {
+            return response()->json([
+                'message' => "BULTO DUPLICADO: La etiqueta '{$bultoCode}' ya fue escaneada y comprobada previamente.",
+            ], 422);
+        }
 
         $product = Product::query()->where('sku', $sku)->first();
         if ($product === null) {
             return response()->json([
-                'message' => "SKU '{$sku}' rechazado: no existe en el catálogo maestro auditado de 72 productos de papelería.",
+                'message' => "SKU '{$sku}' rechazado: no existe en el catálogo maestro auditado.",
             ], 422);
         }
 
@@ -401,11 +626,29 @@ class SlottingController extends Controller
         }
 
         $plannedArrival = null;
-        if ($folio !== '') {
+        if ($arrivalId !== null && $arrivalId > 0) {
+            $plannedArrival = PlannedArrival::query()->find($arrivalId);
+            if ($plannedArrival !== null && $plannedArrival->pendingBoxes() < $boxes) {
+                return response()->json([
+                    'message' => sprintf(
+                        'EXCEDENTE DETECTADO: La llegada %s (%s) ya completó las %d cajas esperadas.',
+                        $plannedArrival->folio,
+                        $product->sku,
+                        $plannedArrival->boxes_expected
+                    ),
+                ], 422);
+            }
+        } elseif ($folio !== '') {
             $plannedArrival = PlannedArrival::query()
                 ->where('branch_id', $branch->id)
                 ->where('product_id', $product->id)
                 ->where('folio', $folio)
+                ->whereIn('status', ['scheduled', 'partial'])
+                ->first();
+        } else {
+            $plannedArrival = PlannedArrival::query()
+                ->where('branch_id', $branch->id)
+                ->where('product_id', $product->id)
                 ->whereIn('status', ['scheduled', 'partial'])
                 ->first();
         }
@@ -419,19 +662,239 @@ class SlottingController extends Controller
                 Auth::id(),
                 Auth::user()?->name ?? 'Juan Pérez Gómez',
                 $plannedArrival,
-                true
+                true,
+                $bultoCode !== '' ? $bultoCode : null,
+                $originSupplier !== '' ? $originSupplier : null,
+                $originDock !== '' ? $originDock : null,
+                null,
+                (bool) ($validated['auxiliary_equipment_confirmed'] ?? true)
             );
         } catch (InvalidArgumentException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
+        $qrOptions = new QROptions([
+            'outputInterface' => QRMarkupSVG::class,
+            'outputBase64' => true,
+            'eccLevel' => EccLevel::L,
+            'scale' => 6,
+            'quietzoneSize' => 4,
+        ]);
+
+        $laserLabels = [];
+        $createdItemIds = [];
+
+        foreach ($result['allocations'] as $alloc) {
+            $createdItemIds[] = $alloc['pallet_item_id'];
+            $internalPayload = json_encode([
+                'etiqueta_laser' => $alloc['internal_label_code'],
+                'sku' => $product->sku,
+                'cajas' => $alloc['boxes_placed'],
+                'acomodo_tarima' => $alloc['pallet_code'],
+                'acomodo_zona' => $alloc['assigned_zone'],
+                'acomodo_rack' => $alloc['planned_rack_coordinate'],
+                'origen_proveedor' => $alloc['origin_supplier'],
+                'origen_anden' => $alloc['origin_dock'],
+                'origen_folio' => $alloc['origin_folio'],
+                'salida_destino' => $branch->code.' '.$branch->name,
+                'salida_anden' => $alloc['outbound_dock_target'],
+            ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+
+            $laserLabels[] = [
+                'pallet_item_id' => $alloc['pallet_item_id'],
+                'internal_label_code' => $alloc['internal_label_code'],
+                'scanned_bulto' => $bultoCode ?: $alloc['origin_folio'],
+                'sku' => $product->sku,
+                'product_name' => $product->name,
+                'boxes' => $alloc['boxes_placed'],
+                'weight_kg' => $alloc['added_weight_kg'],
+                'pallet_code' => $alloc['pallet_code'],
+                'stow_zone' => $alloc['assigned_zone'],
+                'zone_priority' => $alloc['zone_priority'],
+                'layer_index' => $alloc['layer_index'],
+                'rack_coordinate' => $alloc['planned_rack_coordinate'],
+                'origin_supplier' => $alloc['origin_supplier'],
+                'origin_dock' => $alloc['origin_dock'],
+                'origin_folio' => $alloc['origin_folio'],
+                'outbound_branch' => $branch->code.' · '.$branch->name,
+                'outbound_dock_target' => $alloc['outbound_dock_target'],
+                'outbound_cutoff' => $alloc['outbound_cutoff'],
+                'verified_at' => now()->format('H:i:s'),
+                'qr_data_uri' => (new QRCode($qrOptions))->render($internalPayload),
+                'print_url' => route('wms.qr.laser-sheet', ['ids' => $alloc['pallet_item_id']], false),
+            ];
+        }
+
         $branches = Branch::query()->orderBy('number')->get();
+        $freshArrival = $plannedArrival?->fresh();
 
         return response()->json([
-            'scanned_bulto' => $decoded['bulto'] ?? $folio,
+            'scanned_bulto' => $bultoCode ?: ($folio ?: 'QR-VERIFICADO'),
+            'arrival_updated' => $freshArrival !== null ? [
+                'id' => $freshArrival->id,
+                'boxes_expected' => $freshArrival->boxes_expected,
+                'boxes_received' => $freshArrival->boxes_received,
+                'pending_boxes' => $freshArrival->pendingBoxes(),
+                'status' => $freshArrival->status,
+            ] : null,
+            'laser_labels' => $laserLabels,
+            'continuous_print_url' => route('wms.qr.laser-sheet', ['ids' => implode(',', $createdItemIds)], false),
             'result' => $result,
             'state' => $this->buildWorkspacePayload($branch->fresh()),
             'branchesSummary' => $this->buildBranchesSummary($branches),
+        ]);
+    }
+
+    /**
+     * Renderiza la tira continua de etiquetas láser internas del operador:
+     * 1 Etiqueta Principal del Conjunto Comprobado + 1 Etiqueta Individual por cada Caja (Acomodo + Origen + Salida).
+     */
+    public function internalLaserLabels(Request $request): View
+    {
+        $idsParam = trim((string) $request->query('ids', ''));
+        $query = PalletItem::query()->with(['pallet.branch', 'product', 'placedBy'])->whereNotNull('internal_label_code');
+
+        if ($idsParam !== '') {
+            $ids = array_values(array_filter(array_map('intval', explode(',', $idsParam))));
+            if ($ids !== []) {
+                $query->whereIn('id', $ids);
+            }
+        } else {
+            $query->latest('id')->limit(20);
+        }
+
+        $items = $query->orderBy('id')->get();
+        $qrOptions = new QROptions([
+            'outputInterface' => QRMarkupSVG::class,
+            'outputBase64' => true,
+            'eccLevel' => EccLevel::L,
+            'scale' => 6,
+            'quietzoneSize' => 4,
+        ]);
+
+        $totalBoxes = (int) $items->sum('quantity_boxes');
+        $totalWeightKg = round((float) $items->sum('total_weight_kg'), 2);
+        $showAllBoxes = $request->boolean('all_boxes', false);
+        $boxLimit = $showAllBoxes ? max(1, $totalBoxes) : min($totalBoxes, 80);
+
+        $summaryRows = [];
+        $origins = [];
+        $destinations = [];
+        $rackCoords = [];
+        $boxLabels = [];
+        $globalBoxIndex = 0;
+
+        foreach ($items as $item) {
+            $branch = $item->pallet?->branch;
+            $product = $item->product;
+            $rackCoord = $item->planned_rack_coordinate
+                ?: ($item->pallet?->rackCoordinate() ? ($branch?->rack_code.' · '.$item->pallet->rackCoordinate()) : ($branch?->rack_code.' · EN PISO'));
+            $originSupplier = $item->origin_supplier ?? 'Proveedor Autorizado';
+            $originDock = $item->origin_dock ?? 'R2';
+            $outboundBranch = ($branch?->code ?? 'SUC-01').' · '.($branch?->name ?? 'CDMX');
+            $outboundDock = $item->outbound_dock_target ?? 'ANDÉN E1 · OLA 1 TORTÓN';
+
+            $origins[$originSupplier.' (Andén '.$originDock.')'] = true;
+            $destinations[$outboundBranch.' → '.$outboundDock] = true;
+            $rackCoords[$rackCoord] = true;
+
+            $summaryRows[] = [
+                'internal_label_code' => $item->internal_label_code,
+                'sku' => $product?->sku ?? 'SKU',
+                'product_name' => $product?->name ?? 'Producto',
+                'boxes' => (int) $item->quantity_boxes,
+                'weight_kg' => (float) $item->total_weight_kg,
+                'rack_coordinate' => $rackCoord,
+                'pallet_code' => $item->pallet?->code ?? 'TARIMA',
+                'outbound_branch' => $outboundBranch,
+            ];
+
+            $qty = max(1, (int) $item->quantity_boxes);
+            $unitWeight = $product !== null ? (float) $product->master_weight_kg : round((float) $item->total_weight_kg / $qty, 2);
+
+            for ($b = 1; $b <= $qty; $b++) {
+                $globalBoxIndex++;
+                if ($globalBoxIndex > $boxLimit) {
+                    continue;
+                }
+                $boxLabelCode = $qty > 1
+                    ? sprintf('%s-C%02d', $item->internal_label_code, $b)
+                    : (string) $item->internal_label_code;
+
+                $payload = json_encode([
+                    'etiqueta_laser' => $boxLabelCode,
+                    'sku' => $product?->sku,
+                    'caja' => $b.'/'.$qty,
+                    'acomodo_tarima' => $item->pallet?->code,
+                    'acomodo_rack' => $rackCoord,
+                    'origen_proveedor' => $originSupplier,
+                    'origen_anden' => $originDock,
+                    'salida_destino' => $outboundBranch,
+                    'salida_anden' => $outboundDock,
+                ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+
+                $boxLabels[] = [
+                    'index' => $globalBoxIndex,
+                    'total' => $totalBoxes,
+                    'box_in_item' => $b,
+                    'item_total_boxes' => $qty,
+                    'internal_label_code' => $boxLabelCode,
+                    'base_label_code' => $item->internal_label_code,
+                    'scanned_bulto_code' => $item->scanned_bulto_code ?: $item->batch_code,
+                    'sku' => $product?->sku ?? 'SKU',
+                    'product_name' => $product?->name ?? 'Producto',
+                    'stow_zone' => $product?->stow_zone ?? 'Estándar',
+                    'zone_priority' => $item->assigned_zone_priority,
+                    'layer_index' => $item->layer_index,
+                    'quantity_boxes' => 1,
+                    'weight_kg' => $unitWeight,
+                    'orientation' => $item->orientation_instruction,
+                    'pallet_code' => $item->pallet?->code ?? 'TARIMA',
+                    'rack_coordinate' => $rackCoord,
+                    'origin_supplier' => $originSupplier,
+                    'origin_dock' => $originDock,
+                    'origin_folio' => $item->batch_code,
+                    'outbound_branch' => $outboundBranch,
+                    'outbound_dock_target' => $outboundDock,
+                    'outbound_cutoff' => $item->outbound_cutoff ?? 'SALIDA PRÓXIMO CORTE (≥90%)',
+                    'operator_name' => $item->placedBy?->name ?? 'Operador Almacén',
+                    'created_at' => $item->created_at?->format('d/m/Y H:i:s') ?? now()->format('d/m/Y H:i:s'),
+                    'qr_data_uri' => (new QRCode($qrOptions))->render($payload),
+                ];
+            }
+        }
+
+        $masterLabel = null;
+        if ($items->isNotEmpty()) {
+            $masterCode = sprintf('LSR-CONJUNTO-%s', now()->format('His'));
+            $masterPayload = json_encode([
+                'tipo' => 'CONJUNTO_LASER_OPERADOR',
+                'codigo' => $masterCode,
+                'partidas' => $items->count(),
+                'cajas_totales' => $totalBoxes,
+                'peso_total_kg' => $totalWeightKg,
+                'racks' => array_keys($rackCoords),
+                'salidas' => array_keys($destinations),
+            ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+
+            $masterLabel = [
+                'code' => $masterCode,
+                'items_count' => $items->count(),
+                'total_boxes' => $totalBoxes,
+                'total_weight_kg' => $totalWeightKg,
+                'origins' => array_keys($origins),
+                'destinations' => array_keys($destinations),
+                'rack_coords' => array_keys($rackCoords),
+                'summary_rows' => $summaryRows,
+                'qr_data_uri' => (new QRCode($qrOptions))->render($masterPayload),
+            ];
+        }
+
+        return view('wms.internal-laser-labels', [
+            'masterLabel' => $masterLabel,
+            'labels' => collect($boxLabels),
+            'totalBoxes' => $totalBoxes,
+            'hasMoreBoxes' => $totalBoxes > count($boxLabels),
         ]);
     }
 
@@ -562,8 +1025,8 @@ class SlottingController extends Controller
     public function storeSupplierDelivery(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'oc' => ['required', 'string', 'max:40'],
-            'invoice_folio' => ['required', 'string', 'min:4', 'max:40'],
+            'asn_folio' => ['required', 'string', 'max:40'],
+            'remission_folio' => ['required', 'string', 'min:4', 'max:40'],
             'supplier_name' => ['required', 'string', 'max:120'],
             'selected_date' => ['required', 'string', 'max:20'],
             'dock_code' => ['required', 'in:R1,R2,R3,R4'],
@@ -578,7 +1041,15 @@ class SlottingController extends Controller
         $startHour = (int) $validated['start_hour'];
         $endHour = $startHour + (int) $validated['duration_hours'];
         $etaWindow = sprintf('%s · %02d:00–%02d:00', $validated['selected_date'], $startHour, $endHour);
-        $folioBase = strtoupper(trim($validated['oc'])).' · '.strtoupper(trim($validated['invoice_folio']));
+        $folioBase = strtoupper(trim($validated['asn_folio'])).' · '.strtoupper(trim($validated['remission_folio']));
+
+        $qrOptions = new QROptions([
+            'outputInterface' => QRMarkupSVG::class,
+            'outputBase64' => true,
+            'eccLevel' => EccLevel::L,
+            'scale' => 6,
+            'quietzoneSize' => 4,
+        ]);
 
         $created = [];
         foreach ($validated['packages'] as $pkg) {
@@ -595,6 +1066,21 @@ class SlottingController extends Controller
             ]);
             $arrival->load(['branch', 'product']);
 
+            $sampleBoxCode = sprintf('BLT-ARR%d-%s-01', $arrival->id, $arrival->product->sku);
+            $samplePayload = json_encode([
+                'bulto' => $sampleBoxCode,
+                'arrival_id' => $arrival->id,
+                'folio' => $arrival->folio,
+                'proveedor' => $arrival->supplier_name,
+                'anden_entrada' => $arrival->dock_code,
+                'destino' => $arrival->branch->code,
+                'sku' => $arrival->product->sku,
+                'cajas' => 1,
+                'piezas' => $arrival->product->master_factor,
+                'peso_kg' => $arrival->product->master_weight_kg,
+                'zona' => $arrival->product->stow_zone,
+            ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+
             $created[] = [
                 'id' => $arrival->id,
                 'folio' => $arrival->folio,
@@ -610,13 +1096,19 @@ class SlottingController extends Controller
                 'dock_code' => $arrival->dock_code,
                 'eta_window' => $arrival->eta_window,
                 'supplier_name' => $arrival->supplier_name,
+                'sample_bulto_code' => $sampleBoxCode,
+                'sample_qr_payload' => $samplePayload,
+                'sample_qr_svg' => (new QRCode($qrOptions))->render($samplePayload),
                 'qr_label_url' => route('wms.qr.label', ['arrival_id' => $arrival->id], false),
                 'acomodo_url' => route('wms.index', ['branch' => $arrival->branch->code], false),
             ];
         }
 
+        $createdIds = array_column($created, 'id');
+
         return response()->json([
-            'message' => sprintf('Entrega registrada con éxito (%d partidas enviadas al CEDIS CDMX y etiquetas QR generadas).', count($created)),
+            'message' => sprintf('Entrega registrada con éxito (%d partidas enviadas al CEDIS CDMX y etiquetas QR generadas: 1 principal del conjunto + 1 por cada caja).', count($created)),
+            'batch_qr_label_url' => route('wms.qr.label', ['arrival_ids' => implode(',', $createdIds)], false),
             'created_arrivals' => $created,
         ], 201);
     }
@@ -815,12 +1307,24 @@ class SlottingController extends Controller
      */
     private function buildBranchesSummary(\Illuminate\Support\Collection $branches): array
     {
+        $buildingCounts = Pallet::query()
+            ->where('status', 'building')
+            ->selectRaw('branch_id, COUNT(*) as total')
+            ->groupBy('branch_id')
+            ->pluck('total', 'branch_id');
+
+        $pendingCounts = PlannedArrival::query()
+            ->whereIn('status', ['scheduled', 'partial'])
+            ->selectRaw('branch_id, COUNT(*) as total')
+            ->groupBy('branch_id')
+            ->pluck('total', 'branch_id');
+
         $summary = [];
 
         foreach ($branches as $branch) {
             $plan = $this->outboundService->evaluateBranchDispatchPlan($branch);
-            $buildingCount = $branch->pallets()->where('status', 'building')->count();
-            $pendingCount = $branch->plannedArrivals()->whereIn('status', ['scheduled', 'partial'])->count();
+            $buildingCount = (int) ($buildingCounts[$branch->id] ?? 0);
+            $pendingCount = (int) ($pendingCounts[$branch->id] ?? 0);
 
             $summary[] = [
                 'id' => $branch->id,

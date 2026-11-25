@@ -163,7 +163,7 @@
                                 <td class="py-2.5 px-3 font-bold text-zinc-950">{{ $dock['code'] }}</td>
                                 <td class="py-2.5 px-3 font-sans">
                                     <div class="font-bold text-zinc-900">{{ $dock['supplier'] }}</div>
-                                    <div class="font-mono text-[10px] text-zinc-500">{{ $dock['oc'] }}</div>
+                                    <div class="font-mono text-[10px] text-zinc-500">{{ $dock['asn'] }}</div>
                                 </td>
                                 <td class="py-2.5 px-3 text-[11px] text-zinc-600">
                                     {{ $dock['slot'] }}
@@ -223,7 +223,7 @@
                                 <tr class="even:bg-zinc-50/80 hover:bg-orange-50/40">
                                     <td class="py-2.5 px-3 whitespace-nowrap">
                                         <strong class="text-zinc-950">{{ $inc['time'] }}</strong>
-                                        <span class="block text-[10px] text-zinc-500">{{ $inc['oc'] }} · {{ $inc['package'] }}</span>
+                                        <span class="block text-[10px] text-zinc-500">{{ $inc['asn'] }} · {{ $inc['package'] }}</span>
                                     </td>
                                     <td class="py-2.5 px-3">
                                         <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 border border-amber-300 text-amber-900">

@@ -12,6 +12,7 @@ use App\Models\Product;
 use App\Models\User;
 use App\Services\OutboundOrderService;
 use App\Services\SlottingEngineService;
+use App\Services\WarehouseSlottingTopologyGuard;
 use Database\Seeders\BranchSeeder;
 use Database\Seeders\StationeryCatalogSeeder;
 use Database\Seeders\UserSeeder;
@@ -205,6 +206,11 @@ class WmsSlottingEngineTest extends TestCase
         $manifestResponse = $this->actingAs($user)->get(route('wms.outbound.manifest', $order));
         $manifestResponse->assertOk();
         $manifestResponse->assertSee($order->folio);
+        $manifestResponse->assertSee('ETIQUETA MAESTRA DE EMBARQUE FINAL TORTÓN');
+        $manifestResponse->assertSee('Desglose Consolidado del Contenido Embarcado');
+        $manifestResponse->assertDontSee('Etiquetas Individuales por Caja del Embarque');
+        $manifestResponse->assertSee('PAP-007');
+        $manifestResponse->assertSee('MCH-SUC-01-');
         $manifestResponse->assertSee('data:image/svg+xml;base64,');
     }
 
@@ -219,7 +225,9 @@ class WmsSlottingEngineTest extends TestCase
         $this->actingAs($gerente)->get(route('dashboard.gerente'))
             ->assertOk()
             ->assertSee('ERP DIRECCIÓN GENERAL · CEDIS CDMX')
-            ->assertSee('Padrón de Entregas Programadas y Proveedores Activos');
+            ->assertSee('Padrón de Entregas Programadas y Proveedores Activos')
+            ->assertDontSee('Orden de Compra')
+            ->assertDontSee('Cotización');
 
         $this->actingAs($jefeEmbarque)->get(route('dashboard.embarques'))
             ->assertOk()
@@ -235,7 +243,40 @@ class WmsSlottingEngineTest extends TestCase
             ->assertSee('ERP PROVEEDORES · CEDIS CDMX')
             ->assertDontSee('Padrón de Entregas Programadas y Proveedores Activos');
 
-        $this->actingAs($gerente)->get(route('dashboard.sucursal'))->assertOk()->assertSee('ERP DESTINO DE ENTREGA · CDMX');
+        // RBAC estricto: proveedor no puede entrar a /gerente ni a /acomodo sin cerrar sesión
+        $this->actingAs($proveedor)->get(route('dashboard.gerente'))
+            ->assertRedirect(route('dashboard.proveedor'));
+        $this->actingAs($proveedor)->get(route('wms.index'))
+            ->assertRedirect(route('dashboard.proveedor'));
+
+        // La ruta rápida por puesto ya no debe existir
+        $this->get('/login/quick/gerente')->assertNotFound();
+
+        $sucursal = User::query()->where('email', 'sucursal@cedis.com')->firstOrFail();
+        $this->actingAs($sucursal)->get(route('dashboard.sucursal'))->assertOk()->assertSee('ERP DESTINO DE ENTREGA · CDMX');
+    }
+
+    public function test_each_role_authenticates_with_its_own_email_and_password(): void
+    {
+        $credentials = [
+            ['gerente@cedis.com', 'Gerente#2026', '/gerente'],
+            ['embarque@cedis.com', 'Embarque#2026', '/embarques'],
+            ['operador@cedis.com', 'Operador#2026', '/recepcion'],
+            ['proveedor@cedis.com', 'Proveedor#2026', '/proveedor'],
+            ['sucursal@cedis.com', 'Sucursal#2026', '/sucursal'],
+        ];
+
+        foreach ($credentials as [$email, $password, $expectedPath]) {
+            $loginResponse = $this->post('/login', [
+                'email' => $email,
+                'password' => $password,
+            ]);
+            $loginResponse->assertRedirect($expectedPath);
+            $this->assertAuthenticated();
+
+            $this->post('/logout')->assertRedirect('/');
+            $this->assertGuest();
+        }
     }
 
     public function test_can_register_new_product_with_auto_calculated_density_and_stow_zone(): void
@@ -312,8 +353,8 @@ class WmsSlottingEngineTest extends TestCase
         $bondCarta = Product::query()->where('sku', 'PAP-007')->firstOrFail();
 
         $response = $this->actingAs($user)->postJson(route('wms.supplier.schedule'), [
-            'oc' => 'OC-2026-0199',
-            'invoice_folio' => 'FAC-DM-88421',
+            'asn_folio' => 'ASN-2026-0199',
+            'remission_folio' => 'REM-DM-88421',
             'supplier_name' => 'Distribuidora Metropolitana S.A.',
             'selected_date' => '2026-11-26',
             'dock_code' => 'R4',
@@ -338,5 +379,268 @@ class WmsSlottingEngineTest extends TestCase
             'boxes_expected' => 15,
             'dock_code' => 'R4',
         ]);
+    }
+
+    public function test_dual_label_workflow_from_supplier_integrated_qr_to_operator_continuous_laser_label(): void
+    {
+        $proveedor = User::query()->where('email', 'proveedor@cedis.com')->firstOrFail();
+        $operador = User::query()->where('email', 'operador@cedis.com')->firstOrFail();
+        $coyoacan = Branch::query()->where('code', 'SUC-03')->firstOrFail();
+        $bondCarta = Product::query()->where('sku', 'PAP-007')->firstOrFail();
+
+        // 1. El proveedor registra sus artículos y recibe automáticamente la Etiqueta #1 (QR Integrado de Origen)
+        $scheduleResp = $this->actingAs($proveedor)->postJson(route('wms.supplier.schedule'), [
+            'asn_folio' => 'ASN-2026-0210',
+            'remission_folio' => 'REM-PRV-5501',
+            'supplier_name' => 'Papelera Industrial Azteca S.A.',
+            'selected_date' => '2026-11-27',
+            'dock_code' => 'R3',
+            'start_hour' => 11,
+            'duration_hours' => 2,
+            'packages' => [
+                [
+                    'product_id' => $bondCarta->id,
+                    'branch_id' => $coyoacan->id,
+                    'boxes' => 3,
+                ],
+            ],
+        ]);
+
+        $scheduleResp->assertCreated();
+        $arrivalData = $scheduleResp->json('created_arrivals.0');
+        $this->assertNotEmpty($arrivalData['sample_bulto_code']);
+        $this->assertStringStartsWith('data:image/svg+xml;base64,', $arrivalData['sample_qr_svg']);
+
+        // La planilla imprimible de etiquetas integradas del proveedor (1 Principal del Conjunto + 1 por Caja)
+        $this->actingAs($proveedor)
+            ->get($scheduleResp->json('batch_qr_label_url'))
+            ->assertOk()
+            ->assertSee('ETIQUETA PRINCIPAL DEL CONJUNTO')
+            ->assertSee('CAJA 1 / 3')
+            ->assertSee('CAJA 3 / 3')
+            ->assertSee('Papelera Industrial Azteca S.A.');
+
+        // 2. El operador ya tiene en /recepcion el registro vivo de qué va a llegar, dónde (R3) y cuándo (11:00–13:00)
+        $this->actingAs($operador)
+            ->get(route('dashboard.recepcion'))
+            ->assertOk()
+            ->assertSee('Papelera Industrial Azteca S.A.')
+            ->assertSee('R3')
+            ->assertSee('2026-11-27 · 11:00–13:00')
+            ->assertSee('PAP-007');
+
+        // 3. El operador escanea el QR de la etiqueta integrada del proveedor para comprobar la llegada
+        $scanResp = $this->actingAs($operador)->postJson(route('wms.qr.scan'), [
+            'qr_payload' => $arrivalData['sample_qr_payload'],
+        ]);
+
+        $scanResp->assertOk();
+        $scanResp->assertJsonPath('arrival_updated.boxes_received', 1);
+        $scanResp->assertJsonPath('arrival_updated.pending_boxes', 2);
+
+        // 4. Una vez comprobado, se genera automáticamente la Etiqueta #2 (Láser Continua: Acomodo + Origen + Salida)
+        $laserLabel = $scanResp->json('laser_labels.0');
+        $this->assertStringStartsWith('LSR-03-', $laserLabel['internal_label_code']);
+        $this->assertStringContainsString('RACK-03', $laserLabel['rack_coordinate']);
+        $this->assertSame('Papelera Industrial Azteca S.A.', $laserLabel['origin_supplier']);
+        $this->assertSame('R3', $laserLabel['origin_dock']);
+        $this->assertStringContainsString('SUC-03', $laserLabel['outbound_branch']);
+        $this->assertStringContainsString('ANDÉN E', $laserLabel['outbound_dock_target']);
+        $this->assertStringStartsWith('data:image/svg+xml;base64,', $laserLabel['qr_data_uri']);
+
+        // 5. No permite escanear dos veces el mismo bulto comprobado
+        $duplicateResp = $this->actingAs($operador)->postJson(route('wms.qr.scan'), [
+            'qr_payload' => $arrivalData['sample_qr_payload'],
+        ]);
+        $duplicateResp->assertStatus(422);
+
+        // 6. El operador abre la tira continua de etiquetas láser (1 Principal del Conjunto + 1 por cada Caja)
+        $laserSheetResp = $this->actingAs($operador)->get($scanResp->json('continuous_print_url'));
+        $laserSheetResp->assertOk()
+            ->assertSee('ETIQUETA PRINCIPAL DEL CONJUNTO COMPROBADO')
+            ->assertSee('ETIQUETA INTERNA DE ACOMODO Y SALIDA (LÁSER CONTINUO)')
+            ->assertSee('CAJA 1 / 1')
+            ->assertSee($laserLabel['internal_label_code'])
+            ->assertSee('Papelera Industrial Azteca S.A.')
+            ->assertSee('RACK-03')
+            ->assertSee('SUC-03');
+    }
+
+    public function test_gerente_can_create_and_classify_internal_and_external_users_and_non_gerente_is_blocked(): void
+    {
+        $gerente = User::query()->where('email', 'gerente@cedis.com')->firstOrFail();
+        $operador = User::query()->where('email', 'operador@cedis.com')->firstOrFail();
+
+        // 1. Un operador NO puede crear usuarios
+        $this->actingAs($operador)->postJson(route('gerente.users.store'), [
+            'name' => 'Intento No Autorizado',
+            'email' => 'fail@cedis.com',
+            'password' => 'Secret#2026',
+            'role' => 'gerente',
+        ])->assertForbidden();
+
+        // 2. El gerente crea un nuevo Gerente interno y un Proveedor externo
+        $newGerenteResp = $this->actingAs($gerente)->postJson(route('gerente.users.store'), [
+            'name' => 'Ing. Sofía Delgado',
+            'email' => 'gerente2@cedis.com',
+            'password' => 'Sofia#2026',
+            'role' => 'gerente',
+            'job_title' => 'Subgerente de Operaciones CEDIS',
+        ]);
+        $newGerenteResp->assertCreated();
+        $newGerenteResp->assertJsonPath('user.classification', 'INTERNO CEDIS');
+
+        $newProveedorResp = $this->actingAs($gerente)->postJson(route('gerente.users.store'), [
+            'name' => 'Papelera del Valle S.A.',
+            'email' => 'valle@proveedor.mx',
+            'password' => 'Valle#2026',
+            'role' => 'proveedor',
+            'supplier_rfc' => 'PVA990101XY9',
+        ]);
+        $newProveedorResp->assertCreated();
+        $newProveedorResp->assertJsonPath('user.classification', 'EXTERNO');
+        $newProveedorResp->assertJsonPath('user.supplier_rfc', 'PVA990101XY9');
+
+        // 3. El nuevo proveedor externo puede iniciar sesión de inmediato
+        $this->post('/logout');
+        $this->post('/login', [
+            'email' => 'valle@proveedor.mx',
+            'password' => 'Valle#2026',
+        ])->assertRedirect('/proveedor');
+
+        // 4. El gerente suspende la cuenta externa y ya no puede iniciar sesión
+        $this->post('/logout');
+        $createdUserId = $newProveedorResp->json('user.id');
+        $this->actingAs($gerente)->patchJson(route('gerente.users.toggle', $createdUserId))
+            ->assertOk()
+            ->assertJsonPath('user.is_active', false);
+
+        $this->post('/logout');
+        $this->post('/login', [
+            'email' => 'valle@proveedor.mx',
+            'password' => 'Valle#2026',
+        ])->assertSessionHasErrors('email');
+    }
+
+    public function test_warehouse_slotting_topology_guard_blocks_all_6_violation_categories_with_422_and_audit_trail(): void
+    {
+        WarehouseSlottingTopologyGuard::clearViolations();
+
+        $operador = User::query()->where('email', 'operador@cedis.com')->firstOrFail();
+        $suc01 = Branch::query()->where('code', 'SUC-01')->firstOrFail();
+        $suc02 = Branch::query()->where('code', 'SUC-02')->firstOrFail();
+
+        $bondCarta = Product::query()->where('sku', 'PAP-007')->firstOrFail();  // 23.7 kg, Base, Higroscópico
+        $bondOficio = Product::query()->where('sku', 'PAP-009')->firstOrFail(); // 28.4 kg (>25 kg NOM-036)
+        $resistol = Product::query()->where('sku', 'ADH-012')->firstOrFail();   // Líquido Base
+        $fomy = Product::query()->where('sku', 'ART-002')->firstOrFail();       // Superior / Ligero
+
+        // Crear una tarima abierta en SUC-01 con Fomy (Superior / Ligero)
+        $lightReceive = $this->actingAs($operador)->postJson(route('wms.receive'), [
+            'branch_id' => $suc01->id,
+            'product_id' => $fomy->id,
+            'boxes' => 4,
+            'auto_slot_when_full' => false,
+        ])->assertOk();
+        $lightPalletId = (int) $lightReceive->json('result.allocations.0.pallet_id');
+
+        // 1. AISLAMIENTO POR SUCURSAL: Intentar meter bultos de SUC-02 en la tarima de SUC-01 → 422
+        $crossBranchResp = $this->actingAs($operador)->postJson(route('wms.receive'), [
+            'branch_id' => $suc02->id,
+            'product_id' => $fomy->id,
+            'boxes' => 2,
+            'target_pallet_id' => $lightPalletId,
+        ]);
+        $crossBranchResp->assertStatus(422)
+            ->assertJsonFragment(['message' => $crossBranchResp->json('message')]);
+        $this->assertStringContainsString('AISLAMIENTO DE SUCURSAL VIOLADO', (string) $crossBranchResp->json('message'));
+
+        // 5. INTEGRIDAD VERTICAL (NO APLASTAMIENTO): Intentar forzar Papel Bond (Zona 1 Base) sobre la tarima con Fomy (Zona 3 Ligero) → 422
+        $crushResp = $this->actingAs($operador)->postJson(route('wms.receive'), [
+            'branch_id' => $suc01->id,
+            'product_id' => $bondCarta->id,
+            'boxes' => 4,
+            'target_pallet_id' => $lightPalletId,
+        ]);
+        $crushResp->assertStatus(422);
+        $this->assertStringContainsString('RIESGO DE APLASTAMIENTO', (string) $crushResp->json('message'));
+
+        // 3. POKA-YOKE SOBREPESO (>1,000 kg): Intentar forzar 50 cajas de Papel Bond Carta (1,185 kg + 22 kg tara) en una misma tarima → 422
+        $paperReceive = $this->actingAs($operador)->postJson(route('wms.receive'), [
+            'branch_id' => $suc01->id,
+            'product_id' => $bondCarta->id,
+            'boxes' => 10,
+            'auto_slot_when_full' => false,
+        ])->assertOk();
+        $paperPalletId = (int) $paperReceive->json('result.allocations.0.pallet_id');
+
+        $overweightResp = $this->actingAs($operador)->postJson(route('wms.receive'), [
+            'branch_id' => $suc01->id,
+            'product_id' => $bondCarta->id,
+            'boxes' => 40,
+            'target_pallet_id' => $paperPalletId,
+        ]);
+        $overweightResp->assertStatus(422);
+
+        // 4a. SEGREGACIÓN EN TARIMA: Intentar meter líquido (Resistol ADH-012) en la tarima de papel higroscópico → 422
+        $liquidMixResp = $this->actingAs($operador)->postJson(route('wms.receive'), [
+            'branch_id' => $suc01->id,
+            'product_id' => $resistol->id,
+            'boxes' => 2,
+            'target_pallet_id' => $paperPalletId,
+        ]);
+        $liquidMixResp->assertStatus(422);
+        $this->assertStringContainsString('SEGREGACIÓN QUÍMICA/HIGROSCÓPICA VIOLADA', (string) $liquidMixResp->json('message'));
+
+        // 2. VALIDACIÓN TOPOLÓGICA DE COORDENADAS (4×8): Intentar ubicar tarima en Nivel 5 o Posición 9 → 422
+        $outOfBoundsResp = $this->actingAs($operador)->postJson(route('wms.pallets.slot', $paperPalletId), [
+            'target_level' => 5,
+            'target_position' => 9,
+        ]);
+        $outOfBoundsResp->assertStatus(422);
+        $this->assertStringContainsString('COORDENADA FUERA DE RANGO (4×8)', (string) $outOfBoundsResp->json('message'));
+
+        // 4b. SEGREGACIÓN VERTICAL EN RACK 4×8: Ubicar papel en N1·P4 y luego intentar forzar líquido encima en N2·P4 → 422
+        $this->actingAs($operador)->postJson(route('wms.pallets.slot', $paperPalletId), [
+            'target_level' => 1,
+            'target_position' => 4,
+        ])->assertOk();
+
+        $liquidReceive = $this->actingAs($operador)->postJson(route('wms.receive'), [
+            'branch_id' => $suc01->id,
+            'product_id' => $resistol->id,
+            'boxes' => 10,
+            'auto_slot_when_full' => false,
+        ])->assertOk();
+        $liquidPalletId = (int) $liquidReceive->json('result.allocations.0.pallet_id');
+
+        $liquidAbovePaperResp = $this->actingAs($operador)->postJson(route('wms.pallets.slot', $liquidPalletId), [
+            'target_level' => 2,
+            'target_position' => 4,
+        ]);
+        $liquidAbovePaperResp->assertStatus(422);
+        $this->assertStringContainsString('SEGREGACIÓN VERTICAL VIOLADA', (string) $liquidAbovePaperResp->json('message'));
+
+        // 6. CUMPLIMIENTO NOM-036 (>25 kg sin equipo auxiliar) y NOM-006 (N2–N4 sin maquinaria) → 422
+        $nom036Resp = $this->actingAs($operador)->postJson(route('wms.receive'), [
+            'branch_id' => $suc01->id,
+            'product_id' => $bondOficio->id, // 28.4 kg (>25 kg)
+            'boxes' => 2,
+            'auxiliary_equipment_confirmed' => false,
+        ]);
+        $nom036Resp->assertStatus(422);
+        $this->assertStringContainsString('BLOQUEO NOM-036-1-STPS-2018', (string) $nom036Resp->json('message'));
+
+        $nom006Resp = $this->actingAs($operador)->postJson(route('wms.pallets.slot', $lightPalletId), [
+            'target_level' => 3,
+            'target_position' => 5,
+            'machinery_confirmed' => false,
+        ]);
+        $nom006Resp->assertStatus(422);
+        $this->assertStringContainsString('BLOQUEO NOM-006-STPS-2023', (string) $nom006Resp->json('message'));
+
+        // Verificar que todas las violaciones quedaron registradas en la bitácora de auditoría del Guard
+        $violations = WarehouseSlottingTopologyGuard::recentViolations();
+        $this->assertGreaterThanOrEqual(7, count($violations));
     }
 }

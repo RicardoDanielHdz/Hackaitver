@@ -68,8 +68,8 @@
                 </span>
             </div>
 
-            <div class="relative aspect-square max-h-60 mx-auto bg-zinc-950 rounded border border-zinc-300 overflow-hidden flex flex-col items-center justify-center">
-                <div id="branch-qr-reader" class="w-full h-full"></div>
+            <div class="relative w-full max-w-[260px] aspect-square mx-auto bg-zinc-950 rounded-md border border-zinc-300 overflow-hidden flex flex-col items-center justify-center">
+                <div id="branch-qr-reader" class="absolute inset-0 w-full h-full"></div>
 
                 <div x-show="cameraState !== 'scanning'" class="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-zinc-950 text-white">
                     <div class="w-28 h-28 relative flex items-center justify-center mb-3">
@@ -80,9 +80,8 @@
                         <i class="fa-solid fa-file-contract text-3xl text-zinc-500" x-show="cameraState === 'idle'"></i>
                         <i class="fa-solid fa-spinner fa-spin text-2xl text-orange-500" x-show="cameraState === 'loading'" x-cloak></i>
                     </div>
-                    <p class="text-xs font-semibold text-zinc-200">
-                        Apunta al código QR impreso en la Relación de Embarque entregada por el chofer
-                    </p>
+                    <p class="text-xs font-semibold text-zinc-200"
+                       x-text="cameraState === 'loading' ? 'Procesando cámara / QR...' : 'Apunta al código QR impreso en la Relación de Embarque entregada por el chofer'"></p>
                 </div>
             </div>
 
@@ -90,20 +89,28 @@
                 <p x-text="cameraError"></p>
             </div>
 
-            <button x-show="cameraState !== 'scanning'"
-                    type="button"
-                    @click="startCamera()"
-                    class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs uppercase tracking-wider py-2.5 rounded transition cursor-pointer flex items-center justify-center space-x-2">
-                <i class="fa-solid fa-camera"></i>
-                <span>Activar Cámara de Sucursal</span>
-            </button>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button x-show="cameraState !== 'scanning'"
+                        type="button"
+                        @click="startCamera()"
+                        class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs uppercase tracking-wider py-2.5 px-3 rounded transition cursor-pointer flex items-center justify-center space-x-2">
+                    <i class="fa-solid fa-video"></i>
+                    <span>Cámara en Vivo</span>
+                </button>
 
-            <button x-show="cameraState === 'scanning'" x-cloak
-                    type="button"
-                    @click="stopCamera()"
-                    class="w-full bg-zinc-950 text-white font-bold text-xs uppercase tracking-wider py-2.5 rounded transition cursor-pointer">
-                Detener Cámara
-            </button>
+                <button x-show="cameraState === 'scanning'" x-cloak
+                        type="button"
+                        @click="stopCamera()"
+                        class="w-full bg-zinc-950 text-white font-bold text-xs uppercase tracking-wider py-2.5 px-3 rounded transition cursor-pointer">
+                    Detener Cámara
+                </button>
+
+                <label class="w-full bg-zinc-950 hover:bg-zinc-800 text-white font-bold text-xs uppercase tracking-wider py-2.5 px-3 rounded transition cursor-pointer flex items-center justify-center space-x-2 text-center">
+                    <i class="fa-solid fa-camera text-orange-400"></i>
+                    <span>Foto Cámara Móvil</span>
+                    <input type="file" accept="image/*" capture="environment" @change="scanQrPhoto($event)" class="hidden">
+                </label>
+            </div>
         </div>
 
         <!-- Derecha (7/12): Verificación de Arribo + Padrón de Embarques Recibidos en Tienda -->
@@ -204,33 +211,63 @@ function branchReceiver() {
             this.confirmed = true;
             this.history[0].status = 'CERRADO';
         },
+        parseManifestQr(decodedText) {
+            try {
+                const parsed = JSON.parse(decodedText);
+                if (parsed && parsed.folio) {
+                    this.manifestFolio = String(parsed.folio);
+                    return;
+                }
+            } catch (_) {}
+            this.manifestFolio = String(decodedText).slice(0, 32);
+        },
         async startCamera() {
             this.cameraError = '';
             this.cameraState = 'loading';
             try {
-                if (!this.qrInstance) {
-                    this.qrInstance = new Html5Qrcode('branch-qr-reader');
-                }
-                await this.qrInstance.start(
-                    { facingMode: 'environment' },
-                    { fps: 10, qrbox: { width: 200, height: 200 } },
+                await this.stopCamera();
+                this.qrInstance = await window.CedisQrScanner.startLiveCamera(
+                    'branch-qr-reader',
                     (decodedText) => {
-                        this.manifestFolio = decodedText.slice(0, 24);
+                        this.parseManifestQr(decodedText);
                         this.stopCamera();
-                    },
-                    () => {}
+                    }
                 );
                 this.cameraState = 'scanning';
-            } catch (_) {
+            } catch (err) {
                 this.cameraState = 'idle';
-                this.cameraError = 'Para usar la cámara en dispositivos móviles ingresa con HTTPS y acepta el permiso.';
+                this.cameraError = err?.message || 'No fue posible abrir la cámara en vivo. Usa "Foto Cámara Móvil".';
             }
         },
         async stopCamera() {
-            if (this.qrInstance && this.cameraState === 'scanning') {
-                try { await this.qrInstance.stop(); } catch (_) {}
+            if (this.qrInstance) {
+                try {
+                    if (this.cameraState === 'scanning') {
+                        await this.qrInstance.stop();
+                    }
+                    this.qrInstance.clear();
+                } catch (_) {}
+                this.qrInstance = null;
             }
             this.cameraState = 'idle';
+        },
+        async scanQrPhoto(event) {
+            const file = event.target?.files?.[0];
+            if (!file) return;
+            this.cameraError = '';
+            this.cameraState = 'loading';
+            try {
+                await this.stopCamera();
+                const decoded = await window.CedisQrScanner.decodeImageFile(file);
+                this.parseManifestQr(decoded);
+            } catch (_) {
+                this.cameraError = 'No se detectó un QR legible en la foto. Acerca la cámara al código con buena luz.';
+            } finally {
+                this.cameraState = 'idle';
+                if (event.target) {
+                    event.target.value = '';
+                }
+            }
         }
     };
 }

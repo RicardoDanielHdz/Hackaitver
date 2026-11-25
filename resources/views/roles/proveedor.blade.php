@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
-@section('title', 'Administración de Proveedores y Entregas — CEDIS CDMX')
-@section('module-code', '04 · PROVEEDOR EXTERNO · ERP DE CITAS, FACTURAS Y ETIQUETAS QR')
+@section('title', 'Portal de Proveedores · Avisos de Entrega (ASN) — CEDIS CDMX')
+@section('module-code', '04 · PROVEEDOR EXTERNO · AVISOS DE ENTREGA (ASN), CITAS Y ETIQUETAS QR')
 
 @section('content')
 @php
@@ -48,7 +48,6 @@
         csrfToken: @js(csrf_token()),
         products: @js($products),
         branches: @js($branches),
-        purchaseOrders: @js($purchaseOrders),
         initialArrivals: @js($formattedArrivals),
         scheduleUrl: @js(route('wms.supplier.schedule', [], false)),
         productsStoreUrl: @js(route('wms.products.store', [], false)),
@@ -75,10 +74,10 @@
                     </span>
                 </div>
                 <h1 class="text-xl sm:text-2xl font-extrabold text-zinc-950 tracking-tight mt-1">
-                    Control de Entregas, Facturación y Etiquetado QR de Proveedores
+                    Registro de Artículos y Emisión de Etiquetas Integradas de Envío
                 </h1>
                 <p class="text-xs text-zinc-500 mt-0.5">
-                    Consulta entregas programadas, registra nuevas citas en los andenes R1–R4 y emite etiquetas QR por bulto para recepción en CEDIS CDMX.
+                    Todo artículo registrado genera automáticamente su <strong>Etiqueta QR Integrada</strong> obligatoria para envío a los andenes R1–R4 del CEDIS CDMX.
                 </p>
             </div>
 
@@ -146,23 +145,70 @@
     <div x-show="successMessage !== ''" x-cloak
          class="p-4 rounded-lg bg-zinc-950 text-white border-l-4 border-orange-500 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
         <div class="text-xs">
-            <div class="font-mono text-[10px] font-bold uppercase text-orange-400">✓ REGISTRO GUARDADO EN SISTEMA</div>
+            <div class="font-mono text-[10px] font-bold uppercase text-orange-400">✓ REGISTRO GUARDADO Y ETIQUETAS INTEGRADAS GENERADAS</div>
             <div class="font-medium mt-0.5" x-text="successMessage"></div>
         </div>
         <div class="flex flex-wrap items-center gap-2 shrink-0">
             <template x-if="createdArrivals.length > 0">
-                <a :href="createdArrivals[0].qr_label_url" target="_blank"
+                <a :href="batchQrLabelUrl || createdArrivals[0].qr_label_url" target="_blank"
                    class="px-3 py-1.5 rounded bg-orange-500 hover:bg-orange-600 text-white text-xs font-mono font-bold uppercase">
-                    <i class="fa-solid fa-print mr-1"></i> Imprimir Etiquetas QR
+                    <i class="fa-solid fa-print mr-1"></i> Imprimir Conjunto Completo (1 Principal + 1 por Caja)
                 </a>
             </template>
+            @if(Auth::check() && Auth::user()->isGerente())
             <a href="{{ route('wms.index') }}"
                class="px-3 py-1.5 rounded bg-white hover:bg-zinc-200 text-zinc-950 text-xs font-mono font-bold uppercase">
                 Ir a Motor de Acomodo →
             </a>
+            @endif
             <button type="button" @click="successMessage = ''" class="text-zinc-400 hover:text-white px-1 cursor-pointer">
                 <i class="fa-solid fa-xmark"></i>
             </button>
+        </div>
+    </div>
+
+    <!-- Panel Automático de Etiquetas Integradas Generadas al Registrar Artículos -->
+    <div x-show="createdArrivals.length > 0" x-cloak
+         class="bg-white border-2 border-zinc-950 rounded-lg overflow-hidden shadow-sm">
+        <div class="bg-zinc-950 text-white px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+                <span class="px-2 py-0.5 rounded bg-orange-500 text-zinc-950 font-mono text-[10px] font-extrabold uppercase">
+                    ETIQUETA #1 · INTEGRADA DE ORIGEN (OBLIGATORIA EN CADA CAJA ENVIADA)
+                </span>
+                <h2 class="text-xs font-extrabold uppercase tracking-wider mt-1">
+                    Etiquetas QR Integradas Generadas Automáticamente para Adhesión en Origen
+                </h2>
+            </div>
+            <span class="font-mono text-[11px] text-emerald-400">
+                ● Notificado en vivo a Operadores de Recepción CEDIS CDMX
+            </span>
+        </div>
+
+        <div class="p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <template x-for="arr in createdArrivals" :key="arr.id">
+                <div class="border-2 border-zinc-950 rounded-md p-4 bg-zinc-50 flex flex-col sm:flex-row items-center gap-4 font-mono text-xs">
+                    <div class="border border-zinc-950 bg-white p-2 text-center shrink-0">
+                        <img :src="arr.sample_qr_svg" :alt="'QR ' + arr.sample_bulto_code" class="w-28 h-28 mx-auto">
+                        <span class="block text-[9px] font-bold text-zinc-700 mt-1" x-text="arr.sample_bulto_code"></span>
+                    </div>
+                    <div class="flex-1 space-y-1.5 w-full">
+                        <div class="text-[10px] font-bold uppercase text-orange-600" x-text="'FOLIO: ' + arr.folio + ' · ANDÉN ' + arr.dock_code"></div>
+                        <div class="font-sans text-sm font-extrabold text-zinc-950" x-text="arr.sku + ' · ' + arr.product_name"></div>
+                        <div class="text-[11px] text-zinc-700">
+                            Destino: <strong class="text-zinc-950" x-text="arr.branch_code + ' · ' + arr.branch_name + ' (' + arr.rack_code + ')'"></strong>
+                        </div>
+                        <div class="text-[11px] text-zinc-600">
+                            Cita: <strong x-text="arr.eta_window"></strong> · Lote: <strong x-text="arr.boxes_expected + ' cajas (' + arr.total_weight_kg + ' kg)'"></strong>
+                        </div>
+                        <div class="pt-1.5">
+                            <a :href="arr.qr_label_url" target="_blank"
+                               class="inline-flex items-center px-3 py-1.5 rounded bg-orange-500 hover:bg-orange-600 text-white text-[11px] font-bold uppercase">
+                                <i class="fa-solid fa-qrcode mr-1.5"></i> Imprimir Etiquetas Integradas (<span x-text="arr.boxes_expected"></span> cajas)
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </template>
         </div>
     </div>
 
@@ -190,7 +236,7 @@
             </div>
             <div class="flex items-center space-x-3 font-mono text-[11px]">
                 <span :class="isFolioValid ? 'text-emerald-400' : 'text-orange-400'"
-                      x-text="isFolioValid ? '✓ Datos fiscales válidos' : '● Verificar factura'"></span>
+                      x-text="isFolioValid ? '✓ Aviso de entrega válido' : '● Verificar remisión'"></span>
                 <span class="text-zinc-600">|</span>
                 <span :class="!hasScheduleConflict ? 'text-emerald-400' : 'text-red-400'"
                       x-text="!hasScheduleConflict ? ('✓ Andén ' + selectedDock + ' disponible') : '✕ Conflicto de horario'"></span>
@@ -201,33 +247,33 @@
             <!-- BLOQUE 1 y BLOQUE 2 en Cuadrícula de 12 Columnas -->
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
-                <!-- Bloque 1 (6/12): Datos Generales, Fiscales y de Contacto -->
+                <!-- Bloque 1 (6/12): Datos de Remisión y Aviso de Entrega (ASN) -->
                 <div class="lg:col-span-6 bg-zinc-50 border border-zinc-200 rounded-md p-4 space-y-3">
                     <div class="flex items-center justify-between border-b border-zinc-200 pb-2">
                         <span class="text-[11px] font-extrabold uppercase tracking-wider text-zinc-900">
-                            1. Datos Fiscales y del Proveedor
+                            1. Aviso de Entrega (ASN) y Remisión de Proveedor
                         </span>
-                        <span class="text-[10px] font-mono text-zinc-500">1 Factura única por OC</span>
+                        <span class="text-[10px] font-mono text-zinc-500">1 Remisión única por envío</span>
                     </div>
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                         <div>
-                            <label class="block text-[10px] font-bold uppercase text-zinc-600 mb-1">Orden de Compra (OC)</label>
+                            <label class="block text-[10px] font-bold uppercase text-zinc-600 mb-1">Folio de Envío / Aviso (ASN)</label>
                             <input type="text"
-                                   x-model="selectedOc"
-                                   placeholder="Ej. OC-2026-0105"
+                                   x-model="asnFolio"
+                                   placeholder="Ej. ASN-2026-0105"
                                    class="w-full bg-white border border-zinc-300 rounded px-3 py-2 font-mono font-bold text-zinc-950 focus:outline-none focus:border-orange-500">
                         </div>
 
                         <div>
-                            <label class="block text-[10px] font-bold uppercase text-zinc-600 mb-1">Folio de Factura Fiscal</label>
+                            <label class="block text-[10px] font-bold uppercase text-zinc-600 mb-1">Folio de Remisión de Proveedor</label>
                             <input type="text"
-                                   x-model="invoiceFolio"
-                                   placeholder="Ej. FAC-DM-99104"
+                                   x-model="remissionFolio"
+                                   placeholder="Ej. REM-DM-99104"
                                    class="w-full bg-white border rounded px-3 py-2 font-mono uppercase text-zinc-950 focus:outline-none"
                                    :class="isDuplicateFolio ? 'border-red-600 ring-1 ring-red-600' : 'border-zinc-300 focus:border-orange-500'">
                             <p x-show="isDuplicateFolio" x-cloak class="text-[10px] font-bold text-red-600 mt-0.5">
-                                Este folio de factura ya fue registrado previamente.
+                                Este folio de remisión ya fue registrado previamente.
                             </p>
                         </div>
 
@@ -456,7 +502,7 @@
             <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-zinc-400 text-xs"></i>
             <input type="text"
                    x-model="tableSearch"
-                   placeholder="Buscar por Razón Social, Folio OC, Factura, SKU o Destino CDMX..."
+                   placeholder="Buscar por Razón Social, Folio ASN, Remisión, SKU o Destino CDMX..."
                    class="w-full bg-zinc-50 border border-zinc-300 rounded-md pl-8 pr-16 py-1.5 text-xs text-zinc-950 focus:bg-white focus:outline-none focus:border-orange-500">
             <button x-show="tableSearch !== ''"
                     type="button"
@@ -492,7 +538,7 @@
                     Padrón de Entregas Programadas y Proveedores Activos
                 </h2>
                 <p class="text-[11px] text-zinc-500">
-                    Haz clic en <strong>Ver Ficha</strong> para consultar datos fiscales, contacto, especificaciones de empaque y etiqueta QR.
+                    Haz clic en <strong>Ver Ficha</strong> para consultar datos del proveedor, remisión, especificaciones de empaque y etiqueta QR.
                 </p>
             </div>
             <a href="{{ route('wms.index') }}"
@@ -510,7 +556,7 @@
                 <thead>
                     <tr class="bg-zinc-950 text-white font-mono text-[10px] uppercase tracking-wider">
                         <th class="py-3 px-4">Razón Social / Proveedor</th>
-                        <th class="py-3 px-3">Folio / Factura</th>
+                        <th class="py-3 px-3">Folio ASN / Remisión</th>
                         <th class="py-3 px-3">Producto (SKU)</th>
                         <th class="py-3 px-3">Destino CDMX</th>
                         <th class="py-3 px-3">Andén / Cita</th>
@@ -528,10 +574,10 @@
                                 <div class="text-[11px] font-mono text-zinc-500" x-text="'RFC: ' + (item.supplier_rfc || 'DVE940812KM3')"></div>
                             </td>
 
-                            <!-- Folio OC / Factura -->
+                            <!-- Folio ASN / Remisión -->
                             <td class="py-3 px-3">
                                 <div class="font-bold text-zinc-950" x-text="item.folio"></div>
-                                <div class="text-[10px] text-zinc-500">Factura verificada</div>
+                                <div class="text-[10px] text-zinc-500">Remisión verificada</div>
                             </td>
 
                             <!-- Producto -->
@@ -761,10 +807,10 @@
 
                 <!-- Cuerpo del Modal en 3 Bloques Administrativos -->
                 <div class="p-6 space-y-5 text-xs">
-                    <!-- Bloque A: Datos Fiscales y de Contacto (Datos Secundarios Ocultos de la Tabla) -->
+                    <!-- Bloque A: Datos de Identificación y Contacto del Proveedor -->
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-zinc-50 border border-zinc-200 rounded-md p-3.5">
                         <div>
-                            <span class="text-[10px] font-bold uppercase text-zinc-500 block">RFC / ID Fiscal</span>
+                            <span class="text-[10px] font-bold uppercase text-zinc-500 block">ID Proveedor (RFC)</span>
                             <strong class="font-mono text-zinc-950" x-text="selectedRecord.supplier_rfc || 'DVE940812KM3'"></strong>
                             <span class="block text-[11px] text-emerald-700 font-semibold mt-0.5">● Estatus: Activo</span>
                         </div>
@@ -853,12 +899,12 @@ function supplierPortalApp(config) {
         csrfToken: config.csrfToken,
         products: config.products,
         branches: config.branches,
-        purchaseOrders: config.purchaseOrders || [],
         scheduleUrl: config.scheduleUrl,
         productsStoreUrl: config.productsStoreUrl,
         qrLabelBaseUrl: config.qrLabelBaseUrl,
         scheduledList: config.initialArrivals || [],
         createdArrivals: [],
+        batchQrLabelUrl: '',
 
         // Visibilidad de paneles y filtros de tabla
         showFormPanel: true,
@@ -885,13 +931,13 @@ function supplierPortalApp(config) {
             boxes_to_send: 10
         },
 
-        // Campos del formulario (nombres y estructura idénticos para el backend)
-        selectedOc: 'OC-2026-0105',
-        invoiceFolio: 'FAC-DM-99104',
+        // Campos del formulario de Aviso de Entrega (ASN) y Remisión
+        asnFolio: 'ASN-2026-0105',
+        remissionFolio: 'REM-DM-99104',
         supplierName: 'Distribuidora Metropolitana S.A.',
         contactName: 'Lic. Adriana Morales Vega',
         contactPhone: '55 5340 8910 · logistica@dmetropolitana.mx',
-        existingFolios: ['FAC-AG-77120', 'FAC-DV-98412', 'FAC-OL-44019', 'FAC-AN-30218'],
+        existingFolios: ['REM-AG-77120', 'REM-DV-98412', 'REM-OL-44019', 'REM-AN-30218'],
         selectedDate: '2026-11-26',
         selectedDock: 'R2',
         startHour: 14,
@@ -936,11 +982,11 @@ function supplierPortalApp(config) {
         },
 
         get isDuplicateFolio() {
-            return this.existingFolios.includes(this.invoiceFolio.trim().toUpperCase());
+            return this.existingFolios.includes(this.remissionFolio.trim().toUpperCase());
         },
 
         get isFolioValid() {
-            return this.invoiceFolio.trim().length >= 4 && !this.isDuplicateFolio && this.selectedOc.trim().length >= 3;
+            return this.remissionFolio.trim().length >= 4 && !this.isDuplicateFolio && this.asnFolio.trim().length >= 3;
         },
 
         get totalBoxesCount() {
@@ -1053,7 +1099,7 @@ function supplierPortalApp(config) {
             const prod = this.getProduct(this.packages[0]?.product_id);
             const branch = this.getBranch(this.packages[0]?.branch_id);
             this.selectedRecord = {
-                folio: this.selectedOc + ' · ' + this.invoiceFolio,
+                folio: this.asnFolio + ' · ' + this.remissionFolio,
                 supplier_name: this.supplierName,
                 supplier_rfc: config.defaultSupplierRfc,
                 contact_name: this.contactName,
@@ -1123,8 +1169,8 @@ function supplierPortalApp(config) {
                         'X-CSRF-TOKEN': this.csrfToken
                     },
                     body: JSON.stringify({
-                        oc: this.selectedOc,
-                        invoice_folio: this.invoiceFolio,
+                        asn_folio: this.asnFolio,
+                        remission_folio: this.remissionFolio,
                         supplier_name: this.supplierName,
                         selected_date: this.selectedDate,
                         dock_code: this.selectedDock,
@@ -1150,6 +1196,7 @@ function supplierPortalApp(config) {
                 }
 
                 this.createdArrivals = data.created_arrivals || [];
+                this.batchQrLabelUrl = data.batch_qr_label_url || '';
                 this.scheduledList = [...this.createdArrivals, ...this.scheduledList];
                 this.successMessage = data.message;
                 this.selectedDock = 'R4';

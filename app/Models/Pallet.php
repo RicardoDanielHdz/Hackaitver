@@ -79,16 +79,6 @@ class Pallet extends Model
         return sprintf('N%d·P%d', $this->rack_level, $this->rack_position);
     }
 
-    public function remainingWeightKg(): float
-    {
-        return max(0.0, round(self::MAX_TOTAL_WEIGHT_KG - (float) $this->total_weight_kg, 2));
-    }
-
-    public function remainingVolumeM3(): float
-    {
-        return max(0.0, round(self::MAX_USABLE_VOLUME_M3 - (float) $this->volume_m3, 4));
-    }
-
     /**
      * @return BelongsTo<Branch, $this>
      */
