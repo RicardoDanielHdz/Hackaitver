@@ -1,5 +1,7 @@
 # CEDIS CDMX — Plataforma WMS de Almacén, Acomodo Inteligente y Embarques
 
+`PHP ^8.3` · `Laravel ^13.17` · `Vite ^8` · `SQLite` · `NOM-036 / NOM-006`
+
 Sistema web integral de gestión de almacenes (**WMS / ERP Logístico**) diseñado para operar un Centro de Distribución (**CEDIS**) de papelería en la Zona Metropolitana de la CDMX. Orquesta el flujo completo desde la cita de proveedores y el etiquetado QR, pasando por la recepción con escáner handheld, el motor predictivo de acomodo en racks **4×8** con bloqueos físicos **Poka-Yoke**, hasta la consolidación y despacho de camiones **Tortón (≥ 90%)** con cumplimiento normativo **NOM-036** y **NOM-006**.
 
 ---
@@ -13,6 +15,9 @@ Sistema web integral de gestión de almacenes (**WMS / ERP Logístico**) diseña
 - [Catálogo Maestro y Estructura de Planta](#catálogo-maestro-y-estructura-de-planta)
 - [Stack Tecnológico](#stack-tecnológico)
 - [Instalación Local](#instalación-local)
+  - [Requisitos](#requisitos)
+  - [Pasos](#pasos)
+  - [Verificación](#verificación)
 - [Usuarios de Prueba](#usuarios-de-prueba)
 - [Estructura del Proyecto](#estructura-del-proyecto)
 - [Pruebas Automatizadas](#pruebas-automatizadas)
@@ -98,4 +103,105 @@ La aplicación exige autenticación individual por correo y contraseña (`Ensure
 ---
 
 ## Instalación Local
-... (107 líneas restantes)
+
+### Requisitos
+
+| Componente | Versión / configuración declarada |
+| :--- | :--- |
+| PHP | `^8.3` (recomendado `8.4`) |
+| Laravel | `^13.17` (`laravel/framework`) |
+| Composer | Gestor de dependencias PHP (`composer.json`) |
+| Node.js y npm | Requeridos por Vite `^8.0.0` y Tailwind CSS `^4.0.0`; verifica tu versión con `node -v` y `npm -v` |
+| Base de datos | SQLite por defecto (`DB_CONNECTION=sqlite` en `.env.example`) |
+
+### Pasos
+
+1. Clona el repositorio y entra en la carpeta del proyecto:
+
+   ```bash
+   git clone <URL_DEL_REPOSITORIO> cedis-cdmx
+   cd cedis-cdmx
+   ```
+
+2. Instala las dependencias de PHP:
+
+   ```bash
+   composer install
+   ```
+
+3. Crea el archivo de entorno y genera la clave de la aplicación:
+
+   ```bash
+   cp .env.example .env
+   php artisan key:generate
+   ```
+
+4. Crea el archivo de base de datos SQLite:
+
+   ```bash
+   # Linux / macOS / Git Bash
+   touch database/database.sqlite
+   ```
+
+   ```powershell
+   # Windows PowerShell
+   New-Item -ItemType File -Path database\database.sqlite -Force
+   ```
+
+5. Ejecuta las migraciones y siembra los datos demo:
+
+   ```bash
+   php artisan migrate --seed
+   ```
+
+6. Instala las dependencias de Node y compila los recursos frontend:
+
+   ```bash
+   npm install && npm run build
+   ```
+
+7. Inicia el servidor de desarrollo:
+
+   ```bash
+   php artisan serve
+   ```
+
+### Verificación
+
+Abre `http://localhost:8000` (valor de `APP_URL` en `.env.example`) e inicia sesión con alguna de las cuentas de la sección [Usuarios de Prueba](#usuarios-de-prueba).
+
+---
+
+## Usuarios de Prueba
+
+Creados por `UserSeeder` durante `php artisan migrate --seed`:
+
+| Rol | Nombre | Correo electrónico | Contraseña | Módulo principal |
+| :--- | :--- | :--- | :--- | :--- |
+| `gerente` | Lic. Roberto Peña | `gerente@cedis.com` | `Gerente#2026` | `/gerente` |
+| `jefe_embarque` | Ing. Carlos Mendoza | `embarque@cedis.com` | `Embarque#2026` | `/embarques` |
+| `operador` | Juan Pérez Gómez | `operador@cedis.com` | `Operador#2026` | `/recepcion` |
+| `proveedor` | Distribuidora Metropolitana S.A. | `proveedor@cedis.com` | `Proveedor#2026` | `/proveedor` |
+| `sucursal` | Mario Gómez Lara | `sucursal@cedis.com` | `Sucursal#2026` | `/sucursal` |
+
+---
+
+## Estructura del Proyecto
+
+| Ruta | Descripción |
+| :--- | :--- |
+| `app/` | Código PHP de la aplicación (autoload PSR-4 `App\`). |
+| `database/factories/`, `database/seeders/` | Fábricas y seeders, incluidos los usuarios de prueba (PSR-4 `Database\Factories\` y `Database\Seeders\`). |
+| `database/database.sqlite` | Base de datos SQLite local creada durante la instalación. |
+| `tests/` | Pruebas automatizadas (autoload PSR-4 `Tests\`). |
+| `composer.json`, `package.json`, `.env.example` | Dependencias, scripts de compilación y configuración de entorno de referencia. |
+
+---
+
+## Pruebas Automatizadas
+
+El script `composer test` ejecuta `php artisan config:clear` y luego `php artisan test` con PHPUnit `^12.5`:
+
+```bash
+composer test
+```
