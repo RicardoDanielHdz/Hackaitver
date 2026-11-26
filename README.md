@@ -1,4 +1,4 @@
-# CEDIS CDMX — Plataforma WMS de Almacén, Acomodo Inteligente y Embarques
+# Dokra-CDMX -Plataforma WMS de Almacén, Acomodo Inteligente y Embarques
 
 `PHP ^8.3` · `Laravel ^13.17` · `Vite ^8` · `SQLite` · `NOM-036 / NOM-006`
 
