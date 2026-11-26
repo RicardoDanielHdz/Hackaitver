@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tira Continua de Etiquetas Láser Internas — Operador CEDIS CDMX</title>
+    <title>Tira Continua de Etiquetas Láser Internas — Operador Dokra</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
     <style>
@@ -58,7 +58,7 @@
                     <div class="flex flex-wrap items-center justify-between gap-2 border-b-2 border-zinc-950 pb-2 mono">
                         <div>
                             <div class="text-[10px] font-bold uppercase tracking-widest text-orange-600">
-                                CEDIS CDMX · ETIQUETA PRINCIPAL DEL CONJUNTO COMPROBADO (LÁSER CONTINUO)
+                                Dokra · ETIQUETA PRINCIPAL DEL CONJUNTO COMPROBADO (LÁSER CONTINUO)
                             </div>
                             <div class="text-base font-extrabold text-zinc-950">
                                 {{ $masterLabel['code'] }} · {{ $masterLabel['total_boxes'] }} CAJA(S) · {{ number_format($masterLabel['total_weight_kg'], 1) }} kg
@@ -118,7 +118,7 @@
                     <div class="flex items-center justify-between border-b-2 border-zinc-950 pb-2 mono">
                         <div>
                             <div class="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
-                                CEDIS CDMX · ETIQUETA INTERNA DE ACOMODO Y SALIDA (LÁSER CONTINUO)
+                                Dokra · ETIQUETA INTERNA DE ACOMODO Y SALIDA (LÁSER CONTINUO)
                             </div>
                             <div class="text-base font-extrabold text-zinc-950">
                                 {{ $lbl['internal_label_code'] }} · {{ $lbl['sku'] }} (CAJA {{ $lbl['index'] }} / {{ $lbl['total'] }} · {{ $lbl['weight_kg'] }} kg)

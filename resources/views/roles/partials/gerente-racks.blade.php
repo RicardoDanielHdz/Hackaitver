@@ -4,7 +4,7 @@
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 mb-4 border-b border-zinc-200">
             <div>
                 <span class="text-[10px] font-mono font-bold uppercase tracking-widest text-orange-600">GEMELO DIGITAL DE ALMACÉN</span>
-                <h2 class="text-base font-extrabold text-zinc-950">Plano de Nave CEDIS (100 m × 40 m · Altura 9 m · Racks 6 m)</h2>
+                <h2 class="text-base font-extrabold text-zinc-950">Plano de Nave Dokra (100 m × 40 m · Altura 9 m · Racks 6 m)</h2>
             </div>
             <div class="text-xs font-mono text-zinc-600">
                 Selecciona cualquiera de los 32 Racks para abrir su elevación frontal (4×8)

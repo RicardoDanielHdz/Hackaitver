@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Etiqueta Única de Embarque Tortón {{ $order->folio }} — CEDIS CDMX</title>
+    <title>Etiqueta Única de Embarque Tortón {{ $order->folio }} — Dokra</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
     <style>
@@ -37,7 +37,7 @@
             <div class="bg-zinc-950 text-white px-5 py-3 flex flex-wrap items-center justify-between gap-2 mono">
                 <div>
                     <span class="text-[10px] font-bold uppercase tracking-widest text-orange-400">
-                        ETIQUETA MAESTRA DE EMBARQUE FINAL TORTÓN · CEDIS CDMX
+                        ETIQUETA MAESTRA DE EMBARQUE FINAL TORTÓN · Dokra
                     </span>
                     <h1 class="text-xl font-extrabold uppercase tracking-tight">
                         {{ $order->folio }} · {{ $order->branch->code }} {{ $order->branch->name }}
@@ -65,8 +65,8 @@
                     <div class="md:col-span-9 space-y-2.5">
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                             <div class="border border-zinc-300 bg-zinc-50 p-2.5">
-                                <span class="text-[9px] font-bold uppercase text-zinc-500 block">ORIGEN / SALIDA CEDIS</span>
-                                <strong class="font-sans text-sm text-zinc-950">CEDIS CDMX · Andén {{ $order->dock_code }}</strong>
+                                <span class="text-[9px] font-bold uppercase text-zinc-500 block">ORIGEN / SALIDA Dokra</span>
+                                <strong class="font-sans text-sm text-zinc-950">Dokra · Andén {{ $order->dock_code }}</strong>
                                 <div class="text-[10px] text-zinc-600 mt-0.5">Rack liberado: <strong>{{ $order->branch->rack_code }}</strong> · Autorizó: {{ $order->createdBy?->name ?? 'Sistema WMS' }}</div>
                             </div>
 
@@ -114,7 +114,7 @@
                                 @endif
                             </div>
                             <span class="font-sans text-zinc-600 truncate max-w-xs">
-                                <strong>Orígenes:</strong> {{ $totals['suppliers_list'] ?: 'CEDIS CDMX' }}
+                                <strong>Orígenes:</strong> {{ $totals['suppliers_list'] ?: 'Dokra' }}
                             </span>
                         </div>
                     </div>
@@ -181,7 +181,7 @@
                 <!-- Bloque 4: Firmas de Acuse -->
                 <div class="grid grid-cols-3 gap-6 pt-5 text-center text-[10px]">
                     <div class="border-t border-zinc-950 pt-1.5">
-                        JEFE DE EMBARQUE CEDIS
+                        JEFE DE EMBARQUE Dokra
                         <span class="block text-[9px] text-zinc-500">Andén {{ $order->dock_code }} · {{ $totals['seal_code'] }}</span>
                     </div>
                     <div class="border-t border-zinc-950 pt-1.5">

@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'ERP de Recepción en Sucursal Destino — CEDIS CDMX')
+@section('title', 'ERP de Recepción en Sucursal Destino — Dokra')
 @section('module-code', '05 · RECEPTOR DE SUCURSAL · ACUSE DE MANIFIESTO QR')
 
 @section('extra-head')

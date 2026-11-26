@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
-@section('title', 'ERP de Recepción QR y Etiquetado Láser Continuo — CEDIS CDMX')
-@section('module-code', '03 · OPERADOR CEDIS · LLEGADAS PROGRAMADAS, ESCANEO QR Y ETIQUETA LÁSER CONTINUA')
+@section('title', 'ERP de Recepción QR y Etiquetado Láser Continuo — Dokra')
+@section('module-code', '03 · OPERADOR Dokra · LLEGADAS PROGRAMADAS, ESCANEO QR Y ETIQUETA LÁSER CONTINUA')
 
 @section('extra-head')
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>

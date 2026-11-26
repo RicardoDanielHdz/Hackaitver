@@ -20,7 +20,7 @@
             is_active: true
         },
         roleLabels: {
-            gerente: 'Gerente / Admin CEDIS',
+            gerente: 'Gerente / Admin Dokra',
             jefe_embarque: 'Jefe de Embarque y Tráfico',
             operador: 'Operador de Almacén y Recepción',
             proveedor: 'Proveedor Externo',
@@ -28,7 +28,7 @@
         },
         onRoleChange() {
             const defaults = {
-                gerente: 'Gerente General de Operaciones CEDIS',
+                gerente: 'Gerente General de Operaciones Dokra',
                 jefe_embarque: 'Jefe de Embarque y Tráfico',
                 operador: 'Operador de Almacén y Recepción',
                 proveedor: 'Proveedor Externo Autorizado',
@@ -41,7 +41,7 @@
             this.form.password = prefix + '#' + Math.floor(1000 + Math.random() * 8999);
         },
         get formClassification() {
-            return ['proveedor', 'sucursal'].includes(this.form.role) ? 'EXTERNO' : 'INTERNO CEDIS';
+            return ['proveedor', 'sucursal'].includes(this.form.role) ? 'EXTERNO' : 'INTERNO Dokra';
         },
         get filteredUsers() {
             const q = this.search.trim().toLowerCase();
@@ -132,7 +132,7 @@
                     <i class="fa-solid fa-user-plus"></i>
                 </span>
                 <h2 class="text-xs font-extrabold uppercase tracking-wider">
-                    Alta y Clasificación de Nuevo Usuario (Interno CEDIS o Externo)
+                    Alta y Clasificación de Nuevo Usuario (Interno Dokra o Externo)
                 </h2>
             </div>
             <span class="px-2 py-0.5 rounded font-mono text-[10px] font-bold"
@@ -170,8 +170,8 @@
                     <label class="block text-[10px] font-bold uppercase text-zinc-600 mb-1">Clasificación / Tipo de Perfil (RBAC)</label>
                     <select x-model="form.role" @change="onRoleChange()"
                             class="w-full bg-white border border-zinc-300 rounded px-3 py-2 font-mono font-bold text-zinc-950 focus:outline-none focus:border-orange-500">
-                        <optgroup label="Personal Interno CEDIS">
-                            <option value="gerente">Gerente / Admin CEDIS (/gerente)</option>
+                        <optgroup label="Personal Interno Dokra">
+                            <option value="gerente">Gerente / Admin Dokra (/gerente)</option>
                             <option value="jefe_embarque">Jefe de Embarque y Tráfico (/embarques)</option>
                             <option value="operador">Operador de Almacén y Recepción (/recepcion · /acomodo)</option>
                         </optgroup>
@@ -227,7 +227,7 @@
                     Directorio de Usuarios Registrados (<span x-text="filteredUsers.length"></span>)
                 </h3>
                 <p class="text-[11px] text-zinc-500">
-                    Control de cuentas internas del CEDIS y cuentas externas (proveedores y sucursales destino).
+                    Control de cuentas internas del Dokra y cuentas externas (proveedores y sucursales destino).
                 </p>
             </div>
 
@@ -275,7 +275,7 @@
                             <td class="py-2.5 px-3 text-[11px] text-zinc-700">
                                 <span x-show="u.assigned_branch_code" x-text="'Destino: ' + u.assigned_branch_code"></span>
                                 <span x-show="u.supplier_rfc" x-text="'ID: ' + u.supplier_rfc"></span>
-                                <span x-show="!u.assigned_branch_code && !u.supplier_rfc" class="text-zinc-400">CEDIS CDMX</span>
+                                <span x-show="!u.assigned_branch_code && !u.supplier_rfc" class="text-zinc-400">Dokra</span>
                             </td>
                             <td class="py-2.5 px-3">
                                 <span class="px-2 py-0.5 rounded text-[10px] font-bold border"

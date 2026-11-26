@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'ERP de Embarques y Tráfico — CEDIS CDMX')
+@section('title', 'ERP de Embarques y Tráfico — Dokra')
 @section('module-code', '02 · JEFE DE EMBARQUE Y TRÁFICO · CANDADO NORMATIVO ≥90%')
 
 @section('content')
@@ -203,7 +203,7 @@
             <div>
                 <div class="flex flex-wrap items-center gap-2">
                     <span class="px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-widest bg-zinc-950 text-white rounded">
-                        ERP EMBARQUES Y TRÁFICO · CEDIS CDMX
+                        ERP EMBARQUES Y TRÁFICO · Dokra
                     </span>
                     <span class="px-2 py-0.5 text-[10px] font-mono font-bold bg-emerald-50 border border-emerald-300 text-emerald-800 rounded">
                         ● CANDADO DUAL ≥90% ACTIVO
@@ -644,7 +644,7 @@
                     <div>
                         <div class="flex flex-wrap items-center gap-2">
                             <span class="px-2 py-0.5 rounded bg-orange-500 text-zinc-950 font-mono text-[10px] font-extrabold uppercase">
-                                ETIQUETA MAESTRA DE EMBARQUE FINAL TORTÓN · CEDIS CDMX
+                                ETIQUETA MAESTRA DE EMBARQUE FINAL TORTÓN · Dokra
                             </span>
                             <span class="font-mono text-[11px] text-zinc-300" x-text="'MARCHAMO: ' + (activeManifest.seal || 'MCH-2026')"></span>
                         </div>
@@ -663,7 +663,7 @@
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                                 <div class="bg-white border border-zinc-300 rounded p-2.5">
                                     <span class="text-[9px] text-zinc-500 uppercase block">ORIGEN / SALIDA</span>
-                                    <strong class="font-sans text-zinc-950">CEDIS CDMX · Andén <span x-text="activeManifest.dock"></span></strong>
+                                    <strong class="font-sans text-zinc-950">Dokra · Andén <span x-text="activeManifest.dock"></span></strong>
                                     <div class="text-[10px] text-zinc-600" x-text="'Rack liberado: ' + (activeManifest.rack || 'RACK-01') + ' · Salida ' + activeManifest.time"></div>
                                 </div>
                                 <div class="bg-white border-2 border-zinc-950 rounded p-2.5">

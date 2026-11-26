@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>@yield('title', 'CEDIS CDMX — Control Operativo')</title>
+    <title>@yield('title', 'Dokra — Control Operativo')</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
@@ -61,7 +61,7 @@
                     <i class="fa-solid fa-warehouse"></i>
                 </div>
                 <div class="flex items-center space-x-2.5 truncate">
-                    <span class="font-extrabold text-sm tracking-tight text-white uppercase">CEDIS CDMX</span>
+                    <span class="font-extrabold text-sm tracking-tight text-white uppercase">Dokra</span>
                     <span class="hidden sm:inline-block h-4 w-px bg-zinc-700"></span>
                     <span class="hidden sm:inline-block text-xs font-mono uppercase tracking-wider text-orange-500">
                         @yield('module-code', 'OPERACIONES')
@@ -129,7 +129,7 @@
 
     <footer class="bg-zinc-950 text-zinc-400 border-t border-zinc-800 py-2 px-4">
         <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between text-[11px] font-mono tabular-nums gap-1">
-            <span>CEDIS CDMX · NAVE 100×40×9M</span>
+            <span>Dokra · NAVE 100×40×9M</span>
             <span>RECIBO R1–R4 (08:00–18:00) · EMBARQUE E1–E3 · 32 RACKS (1,024 POS) · TORTÓN ≥90%</span>
         </div>
     </footer>

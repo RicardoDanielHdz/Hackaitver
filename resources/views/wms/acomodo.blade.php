@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
-@section('title', 'ERP de Almacén · Acomodo, Racks y Salidas — CEDIS CDMX')
-@section('module-code', '03 · OPERADOR CEDIS · ERP DE ACOMODO, INVENTARIO Y ÓRDENES DE SALIDA')
+@section('title', 'ERP de Almacén · Acomodo, Racks y Salidas — Dokra')
+@section('module-code', '03 · OPERADOR Dokra · ERP DE ACOMODO, INVENTARIO Y ÓRDENES DE SALIDA')
 
 @section('extra-head')
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
@@ -39,7 +39,7 @@
             <div>
                 <div class="flex flex-wrap items-center gap-2">
                     <span class="px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-widest bg-zinc-950 text-white rounded">
-                        ERP ALMACÉN · CEDIS CDMX
+                        ERP ALMACÉN · Dokra
                     </span>
                     <a href="{{ route('dashboard.recepcion') }}"
                        class="px-2 py-0.5 text-[10px] font-mono font-semibold bg-zinc-100 hover:bg-zinc-200 border border-zinc-300 text-zinc-700 rounded transition">
@@ -1116,7 +1116,7 @@
         <div @click.outside="showNewProductModal = false" class="bg-white text-zinc-950 border-2 border-zinc-950 rounded-lg max-w-xl w-full overflow-hidden shadow-2xl">
             <div class="bg-zinc-950 text-white px-6 py-4 flex items-center justify-between">
                 <div>
-                    <span class="text-[10px] font-mono font-bold uppercase text-orange-400">CATÁLOGO MAESTRO · CEDIS CDMX</span>
+                    <span class="text-[10px] font-mono font-bold uppercase text-orange-400">CATÁLOGO MAESTRO · Dokra</span>
                     <h3 class="text-base font-extrabold text-white">Alta de Nuevo Producto</h3>
                 </div>
                 <button type="button" @click="showNewProductModal = false" class="text-zinc-400 hover:text-white cursor-pointer">
@@ -1212,7 +1212,7 @@
         <div @click.outside="stopQrCamera(); showQrScannerModal = false" class="bg-white text-zinc-950 border-2 border-zinc-950 rounded-lg max-w-lg w-full overflow-hidden shadow-2xl">
             <div class="bg-zinc-950 text-white px-6 py-4 flex items-center justify-between">
                 <div>
-                    <span class="text-[10px] font-mono font-bold uppercase text-orange-400">LECTOR ÓPTICO 2D · CEDIS CDMX</span>
+                    <span class="text-[10px] font-mono font-bold uppercase text-orange-400">LECTOR ÓPTICO 2D · Dokra</span>
                     <h3 class="text-base font-extrabold text-white">Recepción por Etiqueta QR</h3>
                 </div>
                 <button type="button" @click="stopQrCamera(); showQrScannerModal = false" class="text-zinc-400 hover:text-white cursor-pointer">

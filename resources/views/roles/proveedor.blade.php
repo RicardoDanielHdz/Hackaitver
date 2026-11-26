@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Portal de Proveedores · Avisos de Entrega (ASN) — CEDIS CDMX')
+@section('title', 'Portal de Proveedores · Avisos de Entrega (ASN) — Dokra')
 @section('module-code', '04 · PROVEEDOR EXTERNO · AVISOS DE ENTREGA (ASN), CITAS Y ETIQUETAS QR')
 
 @section('content')
@@ -64,7 +64,7 @@
             <div>
                 <div class="flex flex-wrap items-center gap-2">
                     <span class="px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-widest bg-zinc-950 text-white rounded">
-                        ERP PROVEEDORES · CEDIS CDMX
+                        ERP PROVEEDORES · Dokra
                     </span>
                     <span class="px-2 py-0.5 text-[10px] font-mono font-semibold bg-zinc-100 border border-zinc-300 text-zinc-700 rounded">
                         RFC: {{ $user->supplier_rfc ?? 'DVE940812KM3' }}
@@ -77,7 +77,7 @@
                     Registro de Artículos y Emisión de Etiquetas Integradas de Envío
                 </h1>
                 <p class="text-xs text-zinc-500 mt-0.5">
-                    Todo artículo registrado genera automáticamente su <strong>Etiqueta QR Integrada</strong> obligatoria para envío a los andenes R1–R4 del CEDIS CDMX.
+                    Todo artículo registrado genera automáticamente su <strong>Etiqueta QR Integrada</strong> obligatoria para envío a los andenes R1–R4 del Dokra.
                 </p>
             </div>
 
@@ -180,7 +180,7 @@
                 </h2>
             </div>
             <span class="font-mono text-[11px] text-emerald-400">
-                ● Notificado en vivo a Operadores de Recepción CEDIS CDMX
+                ● Notificado en vivo a Operadores de Recepción Dokra
             </span>
         </div>
 
@@ -648,7 +648,7 @@
             <div class="bg-zinc-950 text-white px-6 py-4 flex items-center justify-between">
                 <div>
                     <span class="px-2 py-0.5 rounded bg-orange-500 text-zinc-950 font-mono text-[10px] font-extrabold uppercase">
-                        ALTA DE PRODUCTO DE PROVEEDOR · CEDIS CDMX
+                        ALTA DE PRODUCTO DE PROVEEDOR · Dokra
                     </span>
                     <h3 class="text-base font-extrabold text-white mt-1">
                         Registrar Nuevo Producto para Almacenar en Sección de Sucursal

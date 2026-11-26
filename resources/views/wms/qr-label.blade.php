@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Etiquetas Integradas de Proveedor · {{ $folio }} — CEDIS CDMX</title>
+    <title>Etiquetas Integradas de Proveedor · {{ $folio }} — Dokra</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
     <style>
@@ -24,12 +24,12 @@
                 @if(Auth::check() && Auth::user()->isProveedor())
                     <a href="{{ route('dashboard.proveedor') }}"
                        class="text-xs font-bold uppercase text-zinc-700 hover:text-zinc-950">
-                        ← Volver al Portal de Proveedores (CEDIS CDMX)
+                        ← Volver al Portal de Proveedores (Dokra)
                     </a>
                 @else
                     <a href="{{ route('dashboard.recepcion') }}"
                        class="text-xs font-bold uppercase text-zinc-700 hover:text-zinc-950">
-                        ← Volver a Recepción QR del Operador (CEDIS CDMX)
+                        ← Volver a Recepción QR del Operador (Dokra)
                     </a>
                 @endif
                 <p class="text-xs text-zinc-500 mt-0.5">

@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Acceso Corporativo — CEDIS CDMX')
+@section('title', 'Acceso Corporativo — Dokra')
 @section('body-class', 'bg-white text-zinc-950')
 
 @section('content')
@@ -15,7 +15,7 @@
                 </div>
                 <div>
                     <div class="text-xs font-mono uppercase tracking-widest text-orange-500">ERP LOGÍSTICO · CONTROL DE ACCESO</div>
-                    <h1 class="text-xl font-extrabold tracking-tight text-white uppercase">CEDIS CDMX</h1>
+                    <h1 class="text-xl font-extrabold tracking-tight text-white uppercase">Dokra</h1>
                 </div>
             </div>
 
@@ -72,7 +72,7 @@
 
         <div class="mt-8 pt-4 border-t border-zinc-900 flex items-center justify-between text-[11px] text-zinc-500 font-mono">
             <span>SESIÓN INDIVIDUAL AUDITADA</span>
-            <span>CEDIS CDMX · ZONA METROPOLITANA</span>
+            <span>Dokra · ZONA METROPOLITANA</span>
         </div>
     </section>
 

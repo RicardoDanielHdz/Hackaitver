@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Dirección General de Operaciones — CEDIS CDMX')
+@section('title', 'Dirección General de Operaciones — Dokra')
 @section('module-code', '01 · DIRECCIÓN GENERAL · SUPERVISIÓN LOGÍSTICA Y AUDITORÍA')
 
 @section('content')
@@ -26,7 +26,7 @@
             <div>
                 <div class="flex flex-wrap items-center gap-2">
                     <span class="px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-widest bg-zinc-950 text-white rounded">
-                        ERP DIRECCIÓN GENERAL · CEDIS CDMX
+                        ERP DIRECCIÓN GENERAL · Dokra
                     </span>
                     <span class="px-2 py-0.5 text-[10px] font-mono font-semibold bg-zinc-100 border border-zinc-300 text-zinc-700 rounded">
                         CONSOLIDACIÓN Y CROSS-DOCKING · 08:00 – 18:00 H
